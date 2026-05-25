@@ -16,10 +16,7 @@ export async function POST(request: NextRequest) {
   const parsed = teamDecisionSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Please check all decision fields." }, { status: 400 });
   const price = parsed.data.price === "" ? undefined : parsed.data.price;
-  const lowPrice = parsed.data.lowPrice === "" ? undefined : parsed.data.lowPrice;
-  const highPrice = parsed.data.highPrice === "" ? undefined : parsed.data.highPrice;
-  const bookingLimit = parsed.data.bookingLimit === "" ? undefined : parsed.data.bookingLimit;
-  const valid = playable.run.type === "POSTSCREENING" ? Boolean(lowPrice && highPrice && bookingLimit != null) : Boolean(price);
+  const valid = Boolean(price);
   if (!valid) return NextResponse.json({ error: "Required decision fields are missing." }, { status: 400 });
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -32,9 +29,9 @@ export async function POST(request: NextRequest) {
         submitterParticipantId: participant.id,
         submittedAt: now,
         price: price || null,
-        lowPrice: lowPrice || null,
-        highPrice: highPrice || null,
-        bookingLimit: bookingLimit ?? null,
+        lowPrice: null,
+        highPrice: null,
+        bookingLimit: null,
         isValid: true,
         validationMessage: "Accepted"
       }
@@ -42,9 +39,9 @@ export async function POST(request: NextRequest) {
     const existing = await tx.activeDecision.findFirst({ where: { gameRunId: playable.run.id, periodId: playable.period?.id ?? null, teamId: participant.teamId! } });
     const data = {
       priceUsed: price || null,
-      lowPriceUsed: lowPrice || null,
-      highPriceUsed: highPrice || null,
-      bookingLimitUsed: bookingLimit ?? null,
+      lowPriceUsed: null,
+      highPriceUsed: null,
+      bookingLimitUsed: null,
       submitterParticipantId: participant.id,
       submittedAt: now
     };

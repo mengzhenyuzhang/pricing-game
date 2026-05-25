@@ -19,14 +19,14 @@ export async function getCurrentClassSession() {
 
 export async function getPlayableRun(classSessionId?: string) {
   const period = await prisma.roundPeriod.findFirst({
-    where: { status: "OPEN", gameRun: { status: { in: ["OPEN", "SIMULATED", "REVEALED"] }, ...(classSessionId ? { classSessionId } : {}) } },
+    where: { status: "OPEN", gameRun: { status: { in: ["OPEN", "SIMULATED", "REVEALED"] }, type: { in: ["DYNAMIC", "POSTSCREENING"] }, ...(classSessionId ? { classSessionId } : {}) } },
     include: { gameRun: true },
     orderBy: [{ updatedAt: "desc" }]
   });
   if (period) return { run: period.gameRun, period };
 
   const run = await prisma.gameRun.findFirst({
-    where: { status: "OPEN", type: { not: "DYNAMIC" }, ...(classSessionId ? { classSessionId } : {}) },
+    where: { status: "OPEN", type: "STATIC", ...(classSessionId ? { classSessionId } : {}) },
     orderBy: { updatedAt: "desc" }
   });
   return run ? { run, period: null } : null;
@@ -111,7 +111,7 @@ export async function runSimulation(gameRunId: string) {
   if (run.type === "DYNAMIC") {
     results = simulateDynamic(draws, await buildDynamicDecisions(gameRunId), run.capacity);
   } else if (run.type === "POSTSCREENING") {
-    results = simulatePostscreening(draws, await buildStaticDecisions(gameRunId), run.capacity);
+    results = simulatePostscreening(draws, await buildDynamicDecisions(gameRunId), run.capacity);
   } else {
     results = simulateStatic(draws, await buildStaticDecisions(gameRunId), run.capacity);
   }
@@ -179,10 +179,11 @@ export async function ensureDrawForRun(gameRunId: string) {
 export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDOM" | "LOW" | "HIGH") {
   await ensureMinimumDynamicPeriods(gameRunId);
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId }, include: { periods: true } });
-  const nextDay = run.type === "DYNAMIC" ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
+  const usesDailyPricing = run.type === "DYNAMIC" || run.type === "POSTSCREENING";
+  const nextDay = usesDailyPricing ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
   const dynamicDayCount = Math.max(run.dynamicPeriods, MINIMUM_GAME_DAYS);
-  if (run.type === "DYNAMIC" && nextDay > dynamicDayCount) {
-    throw new Error("All dynamic pricing days have already been completed.");
+  if (usesDailyPricing && nextDay > dynamicDayCount) {
+    throw new Error("All pricing days have already been completed.");
   }
   await prisma.customerDraw.deleteMany({ where: { gameRunId, drawOrder: nextDay } });
   if (mode === "NO_ARRIVAL") {
@@ -222,7 +223,7 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
       customerLabel: `Day ${nextDay}`,
       segment,
       drawOrder: nextDay,
-      periodNumber: run.type === "DYNAMIC" ? nextDay : null,
+      periodNumber: usesDailyPricing ? nextDay : null,
       useInRun: true
     }
   });
@@ -245,7 +246,7 @@ export async function openDynamicPricingDay(gameRunId: string, day: number) {
 
 export async function ensureMinimumDynamicPeriods(gameRunId: string) {
   const run = await prisma.gameRun.findUnique({ where: { id: gameRunId }, include: { periods: true } });
-  if (!run || run.type !== "DYNAMIC") return;
+  if (!run || (run.type !== "DYNAMIC" && run.type !== "POSTSCREENING")) return;
   if (run.dynamicPeriods < MINIMUM_GAME_DAYS) {
     await prisma.gameRun.update({ where: { id: gameRunId }, data: { dynamicPeriods: MINIMUM_GAME_DAYS } });
   }
@@ -265,7 +266,7 @@ export async function ensureMinimumDynamicPeriods(gameRunId: string) {
 }
 
 async function advanceDynamicPeriodIfNeeded(gameRunId: string, type: string, completedDay: number, dynamicPeriods: number, revealed: boolean) {
-  if (type !== "DYNAMIC") return;
+  if (type !== "DYNAMIC" && type !== "POSTSCREENING") return;
   await prisma.roundPeriod.updateMany({ where: { gameRunId, periodNumber: completedDay }, data: { status: "SIMULATED" } });
   if (completedDay < dynamicPeriods) {
     await openDynamicPricingDay(gameRunId, completedDay + 1);

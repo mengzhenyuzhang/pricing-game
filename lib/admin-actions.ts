@@ -171,9 +171,9 @@ export async function createPresetRun(formData: FormData) {
       segmentCutoff: type === "POSTSCREENING" ? 3500 : null
     }
   });
-  if (type === "DYNAMIC") {
+  if (type === "DYNAMIC" || type === "POSTSCREENING") {
     for (let i = 1; i <= dynamicPeriods; i += 1) {
-      await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Period ${i}`, instructions: "Submit the price your team wants to use for this period." } });
+      await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Day ${i}`, instructions: "Submit the price your team wants to use for this day." } });
     }
   }
   revalidatePath(`/admin/class-sessions/${classSessionId}/runs`);
@@ -195,9 +195,9 @@ export async function createCustomRun(formData: FormData) {
       segmentCutoff: parsed.segmentCutoff === "" ? null : parsed.segmentCutoff
     }
   });
-  if (parsed.type === "DYNAMIC") {
+  if (parsed.type === "DYNAMIC" || parsed.type === "POSTSCREENING") {
     for (let i = 1; i <= parsed.dynamicPeriods; i += 1) {
-      await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Period ${i}` } });
+      await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Day ${i}`, instructions: "Submit the price your team wants to use for this day." } });
     }
   }
   redirect(`/admin/run/${run.id}`);
@@ -214,8 +214,8 @@ export async function controlRun(formData: FormData) {
     const run = await prisma.gameRun.update({ where: { id: runId }, data: { status: "OPEN", currentDrawOrder: 0 } });
     await prisma.classSession.update({ where: { id: run.classSessionId }, data: { status: "GAME_ACTIVE" } });
     if (periodId) await prisma.roundPeriod.update({ where: { id: periodId }, data: { status: "OPEN", deadline: null } });
-    if (run.type === "DYNAMIC" && !periodId) await openDynamicPricingDay(run.id, 1);
-    message = run.type === "DYNAMIC" && !periodId ? "Day 1 pricing is open. Teams can submit prices." : periodId ? "Period opened. Teams can submit decisions." : "Run opened. Teams can submit decisions.";
+    if ((run.type === "DYNAMIC" || run.type === "POSTSCREENING") && !periodId) await openDynamicPricingDay(run.id, 1);
+    message = (run.type === "DYNAMIC" || run.type === "POSTSCREENING") && !periodId ? "Day 1 pricing is open. Teams can submit prices." : periodId ? "Period opened. Teams can submit decisions." : "Run opened. Teams can submit decisions.";
   }
   if (action === "lock") {
     if (periodId) await prisma.roundPeriod.update({ where: { id: periodId }, data: { status: "LOCKED" } });
@@ -225,8 +225,8 @@ export async function controlRun(formData: FormData) {
   if (action === "simulate") {
     await runSimulation(runId);
     const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: runId } });
-    if (run.type === "DYNAMIC") await openDynamicPricingDay(runId, run.currentPeriod ?? 1);
-    message = run.type === "DYNAMIC" ? `Day ${run.currentPeriod ?? 1} pricing remains open. Use next-day controls after teams submit.` : "Day-by-day simulation is ready. Use the next-day controls.";
+    if (run.type === "DYNAMIC" || run.type === "POSTSCREENING") await openDynamicPricingDay(runId, run.currentPeriod ?? 1);
+    message = run.type === "DYNAMIC" || run.type === "POSTSCREENING" ? `Day ${run.currentPeriod ?? 1} pricing remains open. Use next-day controls after teams submit.` : "Day-by-day simulation is ready. Use the next-day controls.";
   }
   if (action === "reveal") {
     await prisma.gameRun.update({ where: { id: runId }, data: { status: "REVEALED" } });

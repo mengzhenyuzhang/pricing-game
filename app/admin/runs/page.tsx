@@ -43,7 +43,7 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
         <label><span className="label">Capacity</span><input className="input mt-1" name="capacity" defaultValue={staticCapacity} /></label>
         <label><span className="label">Draw count optional</span><input className="input mt-1" name="drawCount" placeholder={String(drawCount)} /></label>
         <label><span className="label">Draw percent</span><input className="input mt-1" name="drawPercent" defaultValue={current.targetDrawPercent} /></label>
-        <label><span className="label">Dynamic days</span><input className="input mt-1" name="dynamicPeriods" defaultValue="10" min="10" /></label>
+        <label><span className="label">Pricing days</span><input className="input mt-1" name="dynamicPeriods" defaultValue="10" min="10" /></label>
         <label><span className="label">Postscreening capacity guide</span><input className="input mt-1" value={postCapacity} readOnly /></label>
         <label><span className="label">Segment cutoff</span><input className="input mt-1" name="segmentCutoff" placeholder="3500" /></label>
         <button className="btn-primary md:col-span-3">Create custom run</button>

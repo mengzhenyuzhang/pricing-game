@@ -110,6 +110,10 @@ export function simulateDynamic(draws: Draw[], decisions: Decision[], capacity: 
 }
 
 export function simulatePostscreening(draws: Draw[], decisions: Decision[], capacity: number): SimulationResult[] {
+  if (decisions.some((decision) => decision.periodNumber != null || decision.priceUsed != null)) {
+    return simulateDailyPostscreening(draws, decisions, capacity);
+  }
+
   return rankResults(
     decisions.map((decision) => {
       if (!decision.lowPriceUsed || !decision.highPriceUsed || decision.bookingLimitUsed == null) {
@@ -148,6 +152,55 @@ export function simulatePostscreening(draws: Draw[], decisions: Decision[], capa
       return result;
     })
   );
+}
+
+function simulateDailyPostscreening(draws: Draw[], decisions: Decision[], capacity: number): SimulationResult[] {
+  const byTeam = new Map<string, Decision[]>();
+  for (const decision of decisions) {
+    byTeam.set(decision.teamId, [...(byTeam.get(decision.teamId) ?? []), decision]);
+  }
+
+  const results: SimulationResult[] = [];
+  for (const teamDecisions of byTeam.values()) {
+    const ordered = teamDecisions.sort((a, b) => (a.periodNumber ?? 0) - (b.periodNumber ?? 0));
+    const first = ordered[0];
+    const result = emptyResult(first);
+    const priceByPeriod = new Map<number, number>();
+    let lastPrice: number | null = null;
+    for (const decision of ordered) {
+      if (decision.priceUsed && decision.priceUsed > 0) lastPrice = decision.priceUsed;
+      if (!lastPrice) throw new Error(`Missing postscreening price for ${decision.teamName}`);
+      if (decision.periodNumber) priceByPeriod.set(decision.periodNumber, lastPrice);
+    }
+
+    for (const draw of draws) {
+      const periodNumber = draw.periodNumber ?? draw.drawOrder;
+      const price = priceByPeriod.get(periodNumber);
+      if (!price) throw new Error(`Missing day ${periodNumber} price for ${first.teamName}`);
+      const accepted = result.sales < capacity && draw.valuationAmount >= price;
+      if (accepted) {
+        result.sales += 1;
+        result.capacityUsed += 1;
+        result.revenue += price;
+        if (draw.segment === "LOW") result.lowSales += 1;
+        if (draw.segment === "HIGH") result.highSales += 1;
+      }
+      result.events.push({
+        drawOrder: draw.drawOrder,
+        customerId: draw.customerId,
+        segment: draw.segment,
+        periodNumber,
+        priceApplied: price,
+        accepted,
+        revenueAdded: accepted ? price : 0,
+        capacityUsedAfter: result.capacityUsed,
+        valuationAmount: draw.valuationAmount
+      });
+    }
+    results.push(result);
+  }
+
+  return rankResults(results);
 }
 
 export function serializePublicScoreboard(

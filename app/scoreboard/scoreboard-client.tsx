@@ -117,9 +117,7 @@ export function ScoreboardClient() {
                   {run.type === "POSTSCREENING" ? <td className="p-3 text-right">{row.lowSales} / {row.highSales}</td> : null}
                   {run.revealPrices ? (
                     <td className="p-3 text-right">
-                      {run.type === "POSTSCREENING"
-                        ? `L $${price?.lowPriceUsed ?? "-"} / H $${price?.highPriceUsed ?? "-"} / limit ${price?.bookingLimitUsed ?? "-"}`
-                        : `$${price?.priceUsed ?? "-"}`}
+                      ${price?.priceUsed ?? "-"}
                     </td>
                   ) : null}
                 </tr>

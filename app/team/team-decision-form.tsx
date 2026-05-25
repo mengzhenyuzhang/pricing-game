@@ -21,15 +21,7 @@ export function TeamDecisionForm({ runType }: { runType: string }) {
 
   return (
     <form action={submit} className="mt-5 grid gap-4 sm:grid-cols-2">
-      {runType === "POSTSCREENING" ? (
-        <>
-          <label><span className="label">Low price</span><input className="input mt-1" name="lowPrice" inputMode="numeric" required /></label>
-          <label><span className="label">High price</span><input className="input mt-1" name="highPrice" inputMode="numeric" required /></label>
-          <label><span className="label">Low booking limit</span><input className="input mt-1" name="bookingLimit" inputMode="numeric" required /></label>
-        </>
-      ) : (
-        <label><span className="label">Price</span><input className="input mt-1" name="price" inputMode="numeric" required /></label>
-      )}
+      <label><span className="label">Price</span><input className="input mt-1" name="price" inputMode="numeric" required /></label>
       <div className="sm:col-span-2">
         <button disabled={busy} className="btn-primary w-full sm:w-auto">{busy ? "Submitting..." : "Submit team decision"}</button>
         {message ? <p className="mt-4 rounded-md bg-mint p-3 font-semibold">{message}</p> : null}

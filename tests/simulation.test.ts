@@ -48,6 +48,18 @@ describe("simulation logic", () => {
     expect(result.revenue).toBe(2700);
   });
 
+  it("simulates postscreening with one submitted price per day", () => {
+    const draws: Draw[] = [
+      { customerId: "L1", valuationAmount: 800, segment: "LOW", drawOrder: 1, periodNumber: 1 },
+      { customerId: "H1", valuationAmount: 1800, segment: "HIGH", drawOrder: 2, periodNumber: 2 }
+    ];
+    const [result] = simulatePostscreening(draws, [team({ priceUsed: 900, periodNumber: 1 }), team({ priceUsed: 1700, periodNumber: 2 })], 10);
+    expect(result.lowSales).toBe(0);
+    expect(result.highSales).toBe(1);
+    expect(result.sales).toBe(1);
+    expect(result.revenue).toBe(1700);
+  });
+
   it("keeps public scoreboard private", () => {
     const [result] = simulateStatic(
       [{ customerId: "C1", valuationAmount: 1000, segment: "UNKNOWN", drawOrder: 1 }],

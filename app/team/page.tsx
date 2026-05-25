@@ -26,9 +26,17 @@ export default async function TeamPage() {
     ? await prisma.teamResult.findFirst({ where: { gameRunId: resultsRun.id, teamId: participant.teamId } })
     : null;
   const dailyRows = resultsRun ? buildDailyRows(resultsRun.currentDrawOrder, teamResult?.eventsJson ?? "[]") : [];
+  const pageSignature = teamPageSignature(
+    playable?.run.id ?? null,
+    playable?.period?.id ?? null,
+    playable?.run.status ?? null,
+    playable?.period?.status ?? null,
+    resultsRun?.id ?? null,
+    resultsRun?.currentDrawOrder ?? 0
+  );
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <TeamAutoRefresh />
+      <TeamAutoRefresh initialSignature={pageSignature} />
       <section className="panel p-6">
         <p className="text-sm font-bold uppercase tracking-wide text-coral">{participant.classSession.name}</p>
         <h1 className="mt-2 text-4xl font-black">{participant.team.name}</h1>
@@ -53,9 +61,7 @@ export default async function TeamPage() {
               <h3 className="font-bold">Your team&apos;s latest submission</h3>
               <p className="mt-1 text-sm text-slate-700">Submitted by {activeDecision.submitterParticipant?.displayName ?? "a teammate"} at {activeDecision.submittedAt.toLocaleTimeString()}.</p>
               <p className="mt-2 font-semibold">
-                {playable.run.type === "POSTSCREENING"
-                  ? `Low $${activeDecision.lowPriceUsed ?? "-"}, high $${activeDecision.highPriceUsed ?? "-"}, limit ${activeDecision.bookingLimitUsed ?? "-"}`
-                  : `Price $${activeDecision.priceUsed ?? "-"}`}
+                Price ${activeDecision.priceUsed ?? "-"}
               </p>
             </div>
           ) : null}
@@ -133,4 +139,8 @@ function buildDailyRows(currentDay: number, eventsJson: string) {
       cumulativeRevenue
     };
   });
+}
+
+function teamPageSignature(runId: string | null, periodId: string | null, runStatus: string | null, periodStatus: string | null, resultsRunId: string | null, currentDrawOrder: number) {
+  return [runId ?? "no-open-run", periodId ?? "run-level", runStatus ?? "none", periodStatus ?? "none", resultsRunId ?? "no-results", currentDrawOrder].join(":");
 }
