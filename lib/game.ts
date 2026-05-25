@@ -50,7 +50,7 @@ export async function buildDraws(gameRunId: string): Promise<Draw[]> {
 
 export async function buildStaticDecisions(gameRunId: string): Promise<Decision[]> {
   const decisions = await prisma.activeDecision.findMany({
-    where: { gameRunId },
+    where: { gameRunId, periodId: null },
     include: { team: true }
   });
   return decisions.map((decision) => ({

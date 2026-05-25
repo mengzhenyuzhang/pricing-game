@@ -78,6 +78,17 @@ describe("simulation logic", () => {
     expect(result.revenue).toBe(2400);
   });
 
+  it("carries dynamic prices forward across days without new submissions", () => {
+    const draws: Draw[] = [
+      { customerId: "C1", valuationAmount: 900, segment: "UNKNOWN", drawOrder: 1, periodNumber: 1 },
+      { customerId: "C2", valuationAmount: 900, segment: "UNKNOWN", drawOrder: 2, periodNumber: 3 }
+    ];
+    const [result] = simulateDynamic(draws, [team({ priceUsed: 800, periodNumber: 1 })], 100);
+    expect(result.sales).toBe(2);
+    expect(result.revenue).toBe(1600);
+    expect(result.events.map((event) => event.priceApplied)).toEqual([800, 800]);
+  });
+
   it("enforces postscreening booking limits, capacity, and high price", () => {
     const draws: Draw[] = [
       { customerId: "L1", valuationAmount: 800, segment: "LOW", drawOrder: 1 },
@@ -102,6 +113,17 @@ describe("simulation logic", () => {
     expect(result.highSales).toBe(1);
     expect(result.sales).toBe(1);
     expect(result.revenue).toBe(1700);
+  });
+
+  it("carries postscreening daily prices forward across days without new submissions", () => {
+    const draws: Draw[] = [
+      { customerId: "L1", valuationAmount: 1000, segment: "LOW", drawOrder: 1, periodNumber: 1 },
+      { customerId: "L2", valuationAmount: 1000, segment: "LOW", drawOrder: 2, periodNumber: 3 }
+    ];
+    const [result] = simulatePostscreening(draws, [team({ priceUsed: 900, periodNumber: 1 })], 10);
+    expect(result.sales).toBe(2);
+    expect(result.revenue).toBe(1800);
+    expect(result.events.map((event) => event.priceApplied)).toEqual([900, 900]);
   });
 
   it("keeps public scoreboard private", () => {

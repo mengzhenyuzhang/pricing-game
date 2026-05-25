@@ -73,18 +73,10 @@ export function simulateDynamic(draws: Draw[], decisions: Decision[], capacity: 
     const ordered = teamDecisions.sort((a, b) => (a.periodNumber ?? 0) - (b.periodNumber ?? 0));
     const first = ordered[0];
     const result = emptyResult(first);
-    const priceByPeriod = new Map<number, number>();
-    let lastPrice: number | null = null;
-    for (const decision of ordered) {
-      if (decision.priceUsed && decision.priceUsed > 0) lastPrice = decision.priceUsed;
-      if (!lastPrice) throw new Error(`Missing dynamic price for ${decision.teamName}`);
-      if (decision.periodNumber) priceByPeriod.set(decision.periodNumber, lastPrice);
-    }
 
     for (const draw of draws) {
       const periodNumber = draw.periodNumber ?? 1;
-      const price = priceByPeriod.get(periodNumber);
-      if (!price) throw new Error(`Missing period ${periodNumber} price for ${first.teamName}`);
+      const price = priceForPeriod(ordered, periodNumber, first.teamName, "dynamic");
       const accepted = result.capacityUsed < capacity && draw.valuationAmount >= price;
       if (accepted) {
         result.sales += 1;
@@ -165,18 +157,10 @@ function simulateDailyPostscreening(draws: Draw[], decisions: Decision[], capaci
     const ordered = teamDecisions.sort((a, b) => (a.periodNumber ?? 0) - (b.periodNumber ?? 0));
     const first = ordered[0];
     const result = emptyResult(first);
-    const priceByPeriod = new Map<number, number>();
-    let lastPrice: number | null = null;
-    for (const decision of ordered) {
-      if (decision.priceUsed && decision.priceUsed > 0) lastPrice = decision.priceUsed;
-      if (!lastPrice) throw new Error(`Missing postscreening price for ${decision.teamName}`);
-      if (decision.periodNumber) priceByPeriod.set(decision.periodNumber, lastPrice);
-    }
 
     for (const draw of draws) {
       const periodNumber = draw.periodNumber ?? draw.drawOrder;
-      const price = priceByPeriod.get(periodNumber);
-      if (!price) throw new Error(`Missing day ${periodNumber} price for ${first.teamName}`);
+      const price = priceForPeriod(ordered, periodNumber, first.teamName, "postscreening");
       const accepted = result.sales < capacity && draw.valuationAmount >= price;
       if (accepted) {
         result.sales += 1;
@@ -201,6 +185,17 @@ function simulateDailyPostscreening(draws: Draw[], decisions: Decision[], capaci
   }
 
   return rankResults(results);
+}
+
+function priceForPeriod(orderedDecisions: Decision[], periodNumber: number, teamName: string, label: "dynamic" | "postscreening") {
+  let lastPrice: number | null = null;
+  for (const decision of orderedDecisions) {
+    const decisionPeriod = decision.periodNumber ?? 1;
+    if (decisionPeriod > periodNumber) break;
+    if (decision.priceUsed && decision.priceUsed > 0) lastPrice = decision.priceUsed;
+  }
+  if (!lastPrice) throw new Error(`Missing ${label} price for ${teamName}, day ${periodNumber}`);
+  return lastPrice;
 }
 
 export function serializePublicScoreboard(
