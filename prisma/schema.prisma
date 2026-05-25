@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Team {
+  id           String           @id @default(cuid())
+  classSessionId String
+  classSession   ClassSession     @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  teamNumber   Int
+  name         String
+  plannedSize  Int?
+  attendanceMix String           @default("MIXED")
+  inPersonCount Int?
+  onlineCount   Int?
+  captainEmail String?
+  active       Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  participants Participant[]
+  submissions  Submission[]
+  decisions    ActiveDecision[]
+  results      TeamResult[]
+
+  @@unique([classSessionId, teamNumber])
+  @@index([classSessionId, active])
+}
+
+model Valuation {
+  id           String   @id @default(cuid())
+  classSessionId String
+  classSession   ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  customerId   String
+  amount       Int
+  studentAlias String?
+  segment      String   @default("UNKNOWN")
+  createdAt    DateTime @default(now())
+
+  @@unique([classSessionId, customerId])
+  @@index([classSessionId])
+}
+
+model GameRun {
+  id                       String           @id @default(cuid())
+  classSessionId           String
+  classSession             ClassSession     @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  name                     String
+  type                     String
+  status                   String           @default("DRAFT")
+  capacity                 Int
+  drawCount                Int?
+  drawPercent              Float            @default(0.70)
+  dynamicPeriods           Int              @default(5)
+  segmentCutoff            Int?
+  revealPrices             Boolean          @default(false)
+  revealEventDetails       Boolean          @default(false)
+  revealValuationHistogram Boolean          @default(false)
+  currentPeriod            Int?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  periods                  RoundPeriod[]
+  draws                    CustomerDraw[]
+  submissions              Submission[]
+  decisions                ActiveDecision[]
+  results                  TeamResult[]
+
+  @@index([classSessionId, status])
+}
+
+model ClassSession {
+  id                   String      @id @default(cuid())
+  name                 String
+  code                 String      @unique
+  status               String      @default("DRAFT")
+  expectedStudentCount Int?
+  minTeamSize          Int         @default(4)
+  maxTeamSize          Int         @default(5)
+  attendanceModeStrategy String    @default("PREFER_SAME_ATTENDANCE")
+  targetDrawPercent    Float       @default(0.70)
+  revealValuationHistogram Boolean @default(false)
+  revealTeamValuations     Boolean @default(false)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  participants         Participant[]
+  teams                Team[]
+  valuations           Valuation[]
+  runs                 GameRun[]
+}
+
+model Participant {
+  id               String       @id @default(cuid())
+  classSessionId   String
+  classSession     ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  displayName      String
+  email            String?
+  attendanceMode   String       @default("UNKNOWN")
+  valuationAmount  Int
+  teamId           String?
+  team             Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  sessionTokenHash String?
+  checkedInAt      DateTime     @default(now())
+  lastSeenAt       DateTime     @default(now())
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  submissions      Submission[]
+  decisions        ActiveDecision[]
+  draws            CustomerDraw[]
+
+  @@index([classSessionId, teamId])
+  @@index([sessionTokenHash])
+}
+
+model RoundPeriod {
+  id           String           @id @default(cuid())
+  gameRunId    String
+  gameRun      GameRun          @relation(fields: [gameRunId], references: [id], onDelete: Cascade)
+  periodNumber Int
+  label        String
+  status       String           @default("DRAFT")
+  deadline     DateTime?
+  instructions String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  submissions  Submission[]
+  decisions    ActiveDecision[]
+  results      TeamResult[]
+
+  @@unique([gameRunId, periodNumber])
+}
+
+model CustomerDraw {
+  id              String  @id @default(cuid())
+  gameRunId       String
+  gameRun         GameRun @relation(fields: [gameRunId], references: [id], onDelete: Cascade)
+  participantId   String?
+  participant     Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  valuationAmountSnapshot Int
+  customerLabel   String
+  segment         String  @default("UNKNOWN")
+  drawOrder       Int
+  periodNumber    Int?
+  useInRun        Boolean @default(true)
+
+  @@index([gameRunId, periodNumber])
+}
+
+model Submission {
+  id                String       @id @default(cuid())
+  classSessionId    String
+  gameRunId         String
+  gameRun           GameRun      @relation(fields: [gameRunId], references: [id], onDelete: Cascade)
+  periodId          String?
+  period            RoundPeriod? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  teamId            String
+  team              Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  submitterParticipantId String?
+  submitterParticipant   Participant? @relation(fields: [submitterParticipantId], references: [id], onDelete: SetNull)
+  submittedAt       DateTime     @default(now())
+  price             Int?
+  lowPrice          Int?
+  highPrice         Int?
+  bookingLimit      Int?
+  isValid           Boolean      @default(false)
+  validationMessage String?
+  createdAt         DateTime     @default(now())
+
+  @@index([gameRunId, periodId, teamId, submittedAt])
+}
+
+model ActiveDecision {
+  id               String       @id @default(cuid())
+  gameRunId        String
+  gameRun          GameRun      @relation(fields: [gameRunId], references: [id], onDelete: Cascade)
+  periodId         String?
+  period           RoundPeriod? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  teamId           String
+  team             Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  submitterParticipantId String?
+  submitterParticipant   Participant? @relation(fields: [submitterParticipantId], references: [id], onDelete: SetNull)
+  priceUsed        Int?
+  lowPriceUsed     Int?
+  highPriceUsed    Int?
+  bookingLimitUsed Int?
+  submittedAt      DateTime
+
+  @@unique([gameRunId, periodId, teamId])
+}
+
+model TeamResult {
+  id           String       @id @default(cuid())
+  gameRunId    String
+  gameRun      GameRun      @relation(fields: [gameRunId], references: [id], onDelete: Cascade)
+  periodId     String?
+  period       RoundPeriod? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  teamId       String
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sales        Int
+  lowSales     Int          @default(0)
+  highSales    Int          @default(0)
+  revenue      Int
+  capacityUsed Int
+  rank         Int
+  eventsJson   String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([gameRunId, periodId, teamId])
+  @@index([gameRunId, rank])
+}

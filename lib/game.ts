@@ -1,0 +1,201 @@
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { simulateDynamic, simulatePostscreening, simulateStatic } from "@/lib/simulation";
+import { defaultDrawCount } from "@/lib/team-generation";
+import type { Decision, Draw, Segment, SimulationResult } from "@/lib/types";
+
+export async function getCurrentClassSession() {
+  let session = await prisma.classSession.findFirst({ orderBy: { updatedAt: "desc" } });
+  if (!session) {
+    const code = `CLASS${Math.floor(1000 + Math.random() * 9000)}`;
+    session = await prisma.classSession.create({
+      data: { name: "Default Class Session", code, minTeamSize: 4, maxTeamSize: 5, targetDrawPercent: 0.7 }
+    });
+  }
+  return session;
+}
+
+export async function getPlayableRun() {
+  const period = await prisma.roundPeriod.findFirst({
+    where: { status: "OPEN", gameRun: { status: "OPEN" } },
+    include: { gameRun: true },
+    orderBy: [{ updatedAt: "desc" }]
+  });
+  if (period) return { run: period.gameRun, period };
+
+  const run = await prisma.gameRun.findFirst({
+    where: { status: "OPEN", type: { not: "DYNAMIC" } },
+    orderBy: { updatedAt: "desc" }
+  });
+  return run ? { run, period: null } : null;
+}
+
+export async function buildDraws(gameRunId: string): Promise<Draw[]> {
+  const draws = await prisma.customerDraw.findMany({
+    where: { gameRunId, useInRun: true },
+    orderBy: [{ periodNumber: "asc" }, { drawOrder: "asc" }]
+  });
+  return draws.map((draw) => ({
+    customerId: draw.customerLabel,
+    valuationAmount: draw.valuationAmountSnapshot,
+    segment: draw.segment as Segment,
+    drawOrder: draw.drawOrder,
+    periodNumber: draw.periodNumber
+  }));
+}
+
+export async function buildStaticDecisions(gameRunId: string): Promise<Decision[]> {
+  const decisions = await prisma.activeDecision.findMany({
+    where: { gameRunId },
+    include: { team: true }
+  });
+  return decisions.map((decision) => ({
+    teamId: decision.teamId,
+    teamNumber: decision.team.teamNumber,
+    teamName: decision.team.name,
+    priceUsed: decision.priceUsed,
+    lowPriceUsed: decision.lowPriceUsed,
+    highPriceUsed: decision.highPriceUsed,
+    bookingLimitUsed: decision.bookingLimitUsed,
+    submittedAt: decision.submittedAt
+  }));
+}
+
+export async function buildDynamicDecisions(gameRunId: string): Promise<Decision[]> {
+  const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId } });
+  const periods = await prisma.roundPeriod.findMany({
+    where: { gameRunId },
+    orderBy: { periodNumber: "asc" }
+  });
+  const teams = await prisma.team.findMany({ where: { classSessionId: run.classSessionId, active: true }, orderBy: { teamNumber: "asc" } });
+  const raw = await prisma.activeDecision.findMany({
+    where: { gameRunId },
+    include: { team: true, period: true }
+  });
+  const key = (teamId: string, periodId: string) => `${teamId}:${periodId}`;
+  const byKey = new Map(raw.filter((d) => d.periodId).map((d) => [key(d.teamId, d.periodId!), d]));
+  const decisions: Decision[] = [];
+  for (const team of teams) {
+    let lastPrice: number | null = null;
+    for (const period of periods) {
+      const decision = byKey.get(key(team.id, period.id));
+      if (decision?.priceUsed) lastPrice = decision.priceUsed;
+      if (!lastPrice) throw new Error(`Missing price for ${team.name}, ${period.label}`);
+      decisions.push({
+        teamId: team.id,
+        teamNumber: team.teamNumber,
+        teamName: team.name,
+        priceUsed: lastPrice,
+        periodNumber: period.periodNumber,
+        submittedAt: decision?.submittedAt
+      });
+    }
+  }
+  return decisions;
+}
+
+export async function runSimulation(gameRunId: string) {
+  const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId } });
+  const draws = await buildDraws(gameRunId);
+  if (draws.length === 0) throw new Error("No customer draw exists for this run.");
+
+  let results: SimulationResult[];
+  if (run.type === "DYNAMIC") {
+    results = simulateDynamic(draws, await buildDynamicDecisions(gameRunId), run.capacity);
+  } else if (run.type === "POSTSCREENING") {
+    results = simulatePostscreening(draws, await buildStaticDecisions(gameRunId), run.capacity);
+  } else {
+    results = simulateStatic(draws, await buildStaticDecisions(gameRunId), run.capacity);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.teamResult.deleteMany({ where: { gameRunId } });
+    for (const result of results) {
+      await tx.teamResult.create({
+        data: {
+          gameRunId,
+          teamId: result.teamId,
+          sales: result.sales,
+          lowSales: result.lowSales,
+          highSales: result.highSales,
+          revenue: result.revenue,
+          capacityUsed: result.capacityUsed,
+          rank: result.rank,
+          eventsJson: JSON.stringify(result.events)
+        }
+      });
+    }
+    await tx.gameRun.update({ where: { id: gameRunId }, data: { status: "SIMULATED" } });
+    await tx.roundPeriod.updateMany({
+      where: { gameRunId, status: "LOCKED" },
+      data: { status: "SIMULATED" }
+    });
+  });
+  return results;
+}
+
+export async function ensureDrawForRun(gameRunId: string) {
+  const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId }, include: { periods: true } });
+  const existing = await prisma.customerDraw.count({ where: { gameRunId } });
+  if (existing > 0) return;
+  const participants = await prisma.participant.findMany({ where: { classSessionId: run.classSessionId }, orderBy: { checkedInAt: "asc" } });
+  const count = defaultDrawCount(participants.length, run.drawPercent, run.drawCount);
+  const selected = shuffle(participants).slice(0, count);
+  const ordered = run.type === "POSTSCREENING"
+    ? [...selected].sort((a, b) => {
+        const aSegment = segmentFor(run.type, a.valuationAmount, run.segmentCutoff);
+        const bSegment = segmentFor(run.type, b.valuationAmount, run.segmentCutoff);
+        if (aSegment !== bSegment) return aSegment === "LOW" ? -1 : 1;
+        return a.valuationAmount - b.valuationAmount;
+      })
+    : selected;
+  const data = ordered.map((participant, index) => {
+    let periodNumber: number | null = null;
+    if (run.type === "DYNAMIC" && run.periods.length > 0) {
+      periodNumber = (index % (run.dynamicPeriods || run.periods.length)) + 1;
+    }
+    return {
+      gameRunId,
+      participantId: participant.id,
+      valuationAmountSnapshot: participant.valuationAmount,
+      customerLabel: `P${String(index + 1).padStart(3, "0")}`,
+      segment: segmentFor(run.type, participant.valuationAmount, run.segmentCutoff),
+      drawOrder: index + 1,
+      periodNumber,
+      useInRun: true
+    };
+  });
+  if (data.length) await prisma.customerDraw.createMany({ data });
+}
+
+function segmentFor(type: string, amount: number, cutoff?: number | null) {
+  if (type !== "POSTSCREENING") return "UNKNOWN" as const;
+  const threshold = cutoff ?? 3500;
+  return amount < threshold ? ("LOW" as const) : ("HIGH" as const);
+}
+
+function shuffle<T>(items: T[]) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+export function csv(rows: Array<Record<string, unknown>>) {
+  if (rows.length === 0) return "";
+  const headers = Object.keys(rows[0]);
+  const quote = (value: unknown) => {
+    const text = value == null ? "" : String(value);
+    return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  return [headers.join(","), ...rows.map((row) => headers.map((header) => quote(row[header])).join(","))].join("\n");
+}
+
+export function publicEventJson(eventsJson: string) {
+  const events = JSON.parse(eventsJson) as Array<Record<string, unknown>>;
+  return JSON.stringify(events.map(({ valuationAmount: _valuationAmount, ...event }) => event));
+}
+
+export type Tx = Prisma.TransactionClient;
