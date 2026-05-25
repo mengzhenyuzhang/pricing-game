@@ -275,7 +275,7 @@ async function advanceDynamicPeriodIfNeeded(gameRunId: string, type: string, com
 export async function getRunDayLimit(gameRunId: string) {
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId } });
   const valuationCount = await prisma.participant.count({ where: { classSessionId: run.classSessionId } });
-  return defaultDrawCount(valuationCount, run.drawPercent, run.drawCount);
+  return defaultDrawCount(valuationCount, run.drawPercent);
 }
 
 function segmentFor(type: string, amount: number, cutoff?: number | null) {

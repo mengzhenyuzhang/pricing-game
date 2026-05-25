@@ -169,7 +169,7 @@ export async function createPresetRun(formData: FormData) {
       name,
       type,
       capacity: defaultCapacity(type, participantCount),
-      drawCount: dayLimit,
+      drawCount: null,
       drawPercent: classSession.targetDrawPercent,
       dynamicPeriods,
       segmentCutoff,

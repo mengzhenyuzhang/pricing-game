@@ -87,7 +87,7 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
       <section className="panel overflow-x-auto">
         <table className="w-full min-w-[760px]">
           <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Run</th><th className="p-3">Type</th><th className="p-3">Status</th><th className="p-3">Capacity</th><th className="p-3">Day limit</th><th className="p-3"></th></tr></thead>
-          <tbody>{runs.map((run) => <tr key={run.id} className="border-t"><td className="p-3 font-bold">{run.name}</td><td className="p-3">{run.type}</td><td className="p-3"><StatusBadge status={run.status} /></td><td className="p-3">{run.capacity}</td><td className="p-3">{run.drawCount ?? defaultDrawCount(valuationCount, run.drawPercent)}</td><td className="p-3"><Link className="btn-secondary" href={`/admin/run/${run.id}`}>Control</Link></td></tr>)}</tbody>
+          <tbody>{runs.map((run) => <tr key={run.id} className="border-t"><td className="p-3 font-bold">{run.name}</td><td className="p-3">{run.type}</td><td className="p-3"><StatusBadge status={run.status} /></td><td className="p-3">{run.capacity}</td><td className="p-3">{defaultDrawCount(valuationCount, run.drawPercent)}</td><td className="p-3"><Link className="btn-secondary" href={`/admin/run/${run.id}`}>Control</Link></td></tr>)}</tbody>
         </table>
       </section>
     </div>

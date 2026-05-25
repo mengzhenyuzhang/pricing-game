@@ -80,7 +80,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
         <h2 className="text-2xl font-black">Proceed to Next Day</h2>
         <p className="mt-2 text-slate-700">Day {nextDay}: choose whether an arrival occurs. If there is an arrival, the app randomly draws one checked-in valuation and recomputes the scoreboard.</p>
         {run.type === "POSTSCREENING" ? <p className="mt-2 rounded-md bg-slate-100 p-3 text-sm font-semibold">Postscreening cutoff: {formatMoney(cutoff)} ({formatPercent(run.segmentCutoffPercent ?? 0.5)} quantile). Below cutoff draws from {lowValuationCount} valuations under this amount; above cutoff draws from {highValuationCount} valuations at or above it.</p> : null}
-        <p className="mt-1 text-sm text-slate-600">Day limit: {dayLimit}, based on draw percent times checked-in valuations{run.drawCount ? " (or explicit draw count)." : "."}</p>
+        <p className="mt-1 text-sm text-slate-600">Day limit: {dayLimit}, based on draw percent times the current checked-in valuation count.</p>
         {usesDailyPricing ? <p className="mt-2 rounded-md bg-mint p-3 text-sm font-semibold">Current pricing day: {nextDay}. Missing day-{nextDay} prices: {missingCurrentDay.length ? missingCurrentDay.map((team) => team.name).join(", ") : "none"}.</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <ControlButton runId={run.id} action="nextDayNoArrival" label={`Proceed to day ${nextDay}: no arrival`} pendingText="Proceeding..." disabled={!isReadyForFirstDay || dynamicDone || (usesDailyPricing && missingCurrentDay.length > 0) || (!usesDailyPricing && missing.length > 0)} />
