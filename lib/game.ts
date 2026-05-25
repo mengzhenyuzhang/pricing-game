@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_SEGMENT_CUTOFF_PERCENT, quantileCutoff } from "@/lib/segments";
 import { simulateDynamic, simulatePostscreening, simulateStatic } from "@/lib/simulation";
 import { defaultDrawCount } from "@/lib/team-generation";
 import type { Decision, Draw, Segment, SimulationResult } from "@/lib/types";
@@ -194,7 +195,7 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
 
   const alreadyDrawn = await prisma.customerDraw.findMany({ where: { gameRunId, participantId: { not: null } }, select: { participantId: true } });
   const usedIds = alreadyDrawn.map((draw) => draw.participantId!).filter(Boolean);
-  const cutoff = run.segmentCutoff ?? 3500;
+  const cutoff = await getRunSegmentCutoff(run.id, run.classSessionId, run.segmentCutoff, run.segmentCutoffPercent);
   const participants = await prisma.participant.findMany({
     where: {
       classSessionId: run.classSessionId,
@@ -214,7 +215,7 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
       });
   if (!pool.length) throw new Error("No matching checked-in participants are available to draw.");
   const participant = pool[Math.floor(Math.random() * pool.length)];
-  const segment = run.type === "POSTSCREENING" ? segmentFor(run.type, participant.valuationAmount, run.segmentCutoff) : "UNKNOWN";
+  const segment = run.type === "POSTSCREENING" ? segmentFor(run.type, participant.valuationAmount, cutoff) : "UNKNOWN";
   await prisma.customerDraw.create({
     data: {
       gameRunId,
@@ -280,6 +281,22 @@ function segmentFor(type: string, amount: number, cutoff?: number | null) {
   if (type !== "POSTSCREENING") return "UNKNOWN" as const;
   const threshold = cutoff ?? 3500;
   return amount < threshold ? ("LOW" as const) : ("HIGH" as const);
+}
+
+export async function computeSegmentCutoffForClassSession(classSessionId: string, cutoffPercent = DEFAULT_SEGMENT_CUTOFF_PERCENT) {
+  const participants = await prisma.participant.findMany({
+    where: { classSessionId },
+    select: { valuationAmount: true },
+    orderBy: { valuationAmount: "asc" }
+  });
+  return quantileCutoff(participants.map((participant) => participant.valuationAmount), cutoffPercent);
+}
+
+async function getRunSegmentCutoff(gameRunId: string, classSessionId: string, currentCutoff?: number | null, cutoffPercent?: number | null) {
+  if (currentCutoff) return currentCutoff;
+  const computed = await computeSegmentCutoffForClassSession(classSessionId, cutoffPercent ?? DEFAULT_SEGMENT_CUTOFF_PERCENT);
+  await prisma.gameRun.update({ where: { id: gameRunId }, data: { segmentCutoff: computed, segmentCutoffPercent: cutoffPercent ?? DEFAULT_SEGMENT_CUTOFF_PERCENT } });
+  return computed;
 }
 
 function shuffle<T>(items: T[]) {

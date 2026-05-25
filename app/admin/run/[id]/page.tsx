@@ -34,6 +34,12 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
   });
   if (!run) notFound();
   const teams = await prisma.team.findMany({ where: { classSessionId: run.classSessionId, active: true }, orderBy: { teamNumber: "asc" } });
+  const postscreeningValuations = run.type === "POSTSCREENING"
+    ? await prisma.participant.findMany({ where: { classSessionId: run.classSessionId }, select: { valuationAmount: true } })
+    : [];
+  const cutoff = run.segmentCutoff ?? 3500;
+  const lowValuationCount = postscreeningValuations.filter((participant) => participant.valuationAmount < cutoff).length;
+  const highValuationCount = postscreeningValuations.filter((participant) => participant.valuationAmount >= cutoff).length;
   const submittedTeamIds = new Set(run.decisions.map((decision) => decision.teamId));
   const missing = teams.filter((team) => !submittedTeamIds.has(team.id));
   const canProceedDay = run.status === "SIMULATED" || run.status === "REVEALED";
@@ -76,6 +82,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
       <section className="panel p-5">
         <h2 className="text-2xl font-black">Proceed to Next Day</h2>
         <p className="mt-2 text-slate-700">Day {nextDay}: choose whether an arrival occurs. If there is an arrival, the app randomly draws one checked-in valuation and recomputes the scoreboard.</p>
+        {run.type === "POSTSCREENING" ? <p className="mt-2 rounded-md bg-slate-100 p-3 text-sm font-semibold">Postscreening cutoff: {formatMoney(cutoff)} ({formatPercent(run.segmentCutoffPercent ?? 0.5)} quantile). Below cutoff draws from {lowValuationCount} valuations under this amount; above cutoff draws from {highValuationCount} valuations at or above it.</p> : null}
         {usesDailyPricing ? <p className="mt-1 text-sm text-slate-600">This run can proceed through at least day {dynamicDayCount}.</p> : <p className="mt-1 text-sm text-slate-600">Static runs can continue for 10 or more days.</p>}
         {usesDailyPricing ? <p className="mt-2 rounded-md bg-mint p-3 text-sm font-semibold">Current pricing day: {nextDay}. Missing day-{nextDay} prices: {missingCurrentDay.length ? missingCurrentDay.map((team) => team.name).join(", ") : "none"}.</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -185,4 +192,8 @@ function statusHelp(status: string, currentDrawOrder: number, drawCount: number)
 
 function formatMoney(value: number) {
   return `$${value.toLocaleString()}`;
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
 }

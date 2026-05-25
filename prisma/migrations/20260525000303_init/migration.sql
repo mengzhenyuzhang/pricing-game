@@ -36,6 +36,7 @@ CREATE TABLE "GameRun" (
     "drawPercent" REAL NOT NULL DEFAULT 0.70,
     "dynamicPeriods" INTEGER NOT NULL DEFAULT 10,
     "segmentCutoff" INTEGER,
+    "segmentCutoffPercent" DOUBLE PRECISION,
     "revealPrices" BOOLEAN NOT NULL DEFAULT false,
     "revealEventDetails" BOOLEAN NOT NULL DEFAULT false,
     "revealValuationHistogram" BOOLEAN NOT NULL DEFAULT false,

@@ -56,6 +56,7 @@ model GameRun {
   drawPercent              Float            @default(0.70)
   dynamicPeriods           Int              @default(10)
   segmentCutoff            Int?
+  segmentCutoffPercent     Float?
   revealPrices             Boolean          @default(false)
   revealEventDetails       Boolean          @default(false)
   revealValuationHistogram Boolean          @default(false)

@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSession, requireAdmin } from "@/lib/auth";
-import { MINIMUM_GAME_DAYS, addDayToRun, ensureMinimumDynamicPeriods, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
+import { MINIMUM_GAME_DAYS, addDayToRun, computeSegmentCutoffForClassSession, ensureMinimumDynamicPeriods, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_SEGMENT_CUTOFF_PERCENT } from "@/lib/segments";
 import { defaultCapacity, defaultDrawCount, generateAttendanceAwareTeamAssignments } from "@/lib/team-generation";
 import { classSessionSchema, loginSchema, manualValuationSchema, publishAssignmentSchema, runSchema, teamManualSchema } from "@/lib/validation";
 
@@ -159,6 +160,8 @@ export async function createPresetRun(formData: FormData) {
   const type = preset === "dynamic" ? "DYNAMIC" : preset === "post" ? "POSTSCREENING" : "STATIC";
   const name = preset === "static2" ? "Static Round 2" : preset === "dynamic" ? "Dynamic Pricing Game" : preset === "post" ? "Postscreening Game" : "Static Round 1";
   const dynamicPeriods = Math.max(Number(formData.get("dynamicPeriods") || MINIMUM_GAME_DAYS), MINIMUM_GAME_DAYS);
+  const segmentCutoffPercent = type === "POSTSCREENING" ? Number(formData.get("segmentCutoffPercent") || DEFAULT_SEGMENT_CUTOFF_PERCENT) : null;
+  const segmentCutoff = type === "POSTSCREENING" ? await computeSegmentCutoffForClassSession(classSessionId, segmentCutoffPercent ?? DEFAULT_SEGMENT_CUTOFF_PERCENT) : null;
   const run = await prisma.gameRun.create({
     data: {
       classSessionId,
@@ -168,7 +171,8 @@ export async function createPresetRun(formData: FormData) {
       drawCount: defaultDrawCount(participantCount, classSession.targetDrawPercent),
       drawPercent: classSession.targetDrawPercent,
       dynamicPeriods,
-      segmentCutoff: type === "POSTSCREENING" ? 3500 : null
+      segmentCutoff,
+      segmentCutoffPercent
     }
   });
   if (type === "DYNAMIC" || type === "POSTSCREENING") {
@@ -183,6 +187,12 @@ export async function createPresetRun(formData: FormData) {
 export async function createCustomRun(formData: FormData) {
   await requireAdmin();
   const parsed = runSchema.parse(Object.fromEntries(formData));
+  const segmentCutoffPercent = parsed.type === "POSTSCREENING"
+    ? parsed.segmentCutoffPercent === "" ? DEFAULT_SEGMENT_CUTOFF_PERCENT : parsed.segmentCutoffPercent
+    : null;
+  const segmentCutoff = parsed.type === "POSTSCREENING"
+    ? parsed.segmentCutoff === "" ? await computeSegmentCutoffForClassSession(parsed.classSessionId, segmentCutoffPercent ?? DEFAULT_SEGMENT_CUTOFF_PERCENT) : parsed.segmentCutoff
+    : null;
   const run = await prisma.gameRun.create({
     data: {
       classSessionId: parsed.classSessionId,
@@ -192,7 +202,8 @@ export async function createCustomRun(formData: FormData) {
       drawCount: parsed.drawCount === "" ? null : parsed.drawCount,
       drawPercent: parsed.drawPercent,
       dynamicPeriods: parsed.dynamicPeriods,
-      segmentCutoff: parsed.segmentCutoff === "" ? null : parsed.segmentCutoff
+      segmentCutoff,
+      segmentCutoffPercent
     }
   });
   if (parsed.type === "DYNAMIC" || parsed.type === "POSTSCREENING") {

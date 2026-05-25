@@ -32,7 +32,8 @@ export const runSchema = z.object({
   drawCount: z.coerce.number().int().min(1).max(10000).optional().or(z.literal("")),
   drawPercent: z.coerce.number().min(0.01).max(1),
   dynamicPeriods: z.coerce.number().int().min(10).max(30).default(10),
-  segmentCutoff: z.coerce.number().int().min(1).max(100000).optional().or(z.literal(""))
+  segmentCutoff: z.coerce.number().int().min(1).max(100000).optional().or(z.literal("")),
+  segmentCutoffPercent: z.coerce.number().min(0.01).max(0.99).optional().or(z.literal(""))
 });
 
 export const manualValuationSchema = valuationSchema.extend({

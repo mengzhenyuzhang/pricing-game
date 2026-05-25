@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { quantileCutoff } from "../lib/segments";
 import { serializePublicScoreboard, simulateDynamic, simulatePostscreening, simulateStatic } from "../lib/simulation";
 import type { Decision, Draw } from "../lib/types";
 
@@ -10,6 +11,11 @@ const team = (partial: Partial<Decision> = {}): Decision => ({
 });
 
 describe("simulation logic", () => {
+  it("computes postscreening cutoff from a valuation quantile", () => {
+    expect(quantileCutoff([100, 200, 300, 400, 500], 0.4)).toBe(300);
+    expect(quantileCutoff([100, 200, 300, 400, 500], 0.8)).toBe(500);
+  });
+
   it("simulates static pricing", () => {
     const draws: Draw[] = [100, 500, 1000, 2000].map((valuationAmount, index) => ({
       customerId: `C${index}`,

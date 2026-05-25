@@ -31,7 +31,7 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
         <h2 className="text-2xl font-black">Presets</h2>
         <div className="mt-4 flex flex-wrap gap-2">
           {[["static1", "Static Round 1"], ["static2", "Static Round 2"], ["dynamic", "Dynamic Pricing Game"], ["post", "Postscreening Game"]].map(([preset, label]) => (
-            <form key={preset} action={createPresetRun}><input type="hidden" name="classSessionId" value={current.id} /><input type="hidden" name="preset" value={preset} />{preset === "dynamic" ? <input type="hidden" name="dynamicPeriods" value="10" /> : null}<button className="btn-primary">{label}</button></form>
+            <form key={preset} action={createPresetRun}><input type="hidden" name="classSessionId" value={current.id} /><input type="hidden" name="preset" value={preset} />{preset === "dynamic" || preset === "post" ? <input type="hidden" name="dynamicPeriods" value="10" /> : null}{preset === "post" ? <input type="hidden" name="segmentCutoffPercent" value="0.5" /> : null}<button className="btn-primary">{label}</button></form>
           ))}
         </div>
       </section>
@@ -45,7 +45,8 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
         <label><span className="label">Draw percent</span><input className="input mt-1" name="drawPercent" defaultValue={current.targetDrawPercent} /></label>
         <label><span className="label">Pricing days</span><input className="input mt-1" name="dynamicPeriods" defaultValue="10" min="10" /></label>
         <label><span className="label">Postscreening capacity guide</span><input className="input mt-1" value={postCapacity} readOnly /></label>
-        <label><span className="label">Segment cutoff</span><input className="input mt-1" name="segmentCutoff" placeholder="3500" /></label>
+        <label><span className="label">Postscreening cutoff percentage</span><input className="input mt-1" name="segmentCutoffPercent" defaultValue="0.5" step="0.01" min="0.01" max="0.99" /></label>
+        <label><span className="label">Manual cutoff optional</span><input className="input mt-1" name="segmentCutoff" placeholder="Leave blank to compute from percentage" /></label>
         <button className="btn-primary md:col-span-3">Create custom run</button>
       </form>
       <section className="panel overflow-x-auto">
