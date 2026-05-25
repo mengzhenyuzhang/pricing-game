@@ -67,33 +67,29 @@ export async function buildStaticDecisions(gameRunId: string): Promise<Decision[
 
 export async function buildDynamicDecisions(gameRunId: string): Promise<Decision[]> {
   const draws = await prisma.customerDraw.findMany({ where: { gameRunId, useInRun: true, periodNumber: { not: null } } });
-  const periodNumbers = [...new Set(draws.map((draw) => draw.periodNumber).filter((periodNumber): periodNumber is number => Boolean(periodNumber)))];
+  const periodNumbers = [...new Set(draws.map((draw) => draw.periodNumber).filter((periodNumber): periodNumber is number => Boolean(periodNumber)))].sort((a, b) => a - b);
   if (!periodNumbers.length) return [];
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId } });
-  const periods = await prisma.roundPeriod.findMany({
-    where: { gameRunId, periodNumber: { in: periodNumbers } },
-    orderBy: { periodNumber: "asc" }
-  });
   const teams = await prisma.team.findMany({ where: { classSessionId: run.classSessionId, active: true }, orderBy: { teamNumber: "asc" } });
   const raw = await prisma.activeDecision.findMany({
     where: { gameRunId },
     include: { team: true, period: true }
   });
-  const key = (teamId: string, periodId: string) => `${teamId}:${periodId}`;
-  const byKey = new Map(raw.filter((d) => d.periodId).map((d) => [key(d.teamId, d.periodId!), d]));
+  const key = (teamId: string, periodNumber: number) => `${teamId}:${periodNumber}`;
+  const byKey = new Map(raw.filter((decision) => decision.period?.periodNumber).map((decision) => [key(decision.teamId, decision.period!.periodNumber), decision]));
   const decisions: Decision[] = [];
   for (const team of teams) {
     let lastPrice: number | null = null;
-    for (const period of periods) {
-      const decision = byKey.get(key(team.id, period.id));
+    for (const periodNumber of periodNumbers) {
+      const decision = byKey.get(key(team.id, periodNumber));
       if (decision?.priceUsed) lastPrice = decision.priceUsed;
-      if (!lastPrice) throw new Error(`Missing price for ${team.name}, ${period.label}`);
+      if (!lastPrice) throw new Error(`Missing price for ${team.name}, Day ${periodNumber}`);
       decisions.push({
         teamId: team.id,
         teamNumber: team.teamNumber,
         teamName: team.name,
         priceUsed: lastPrice,
-        periodNumber: period.periodNumber,
+        periodNumber,
         submittedAt: decision?.submittedAt
       });
     }
@@ -217,8 +213,14 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
     }
   });
   await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: nextDay, status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED" } });
-  await runSimulation(gameRunId);
-  await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, dayLimit, run.status === "REVEALED");
+  try {
+    await runSimulation(gameRunId);
+    await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, dayLimit, run.status === "REVEALED");
+  } catch (error) {
+    await prisma.customerDraw.deleteMany({ where: { gameRunId, drawOrder: nextDay } });
+    await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: run.currentDrawOrder, currentPeriod: run.currentPeriod, status: run.status } });
+    throw error;
+  }
   return { day: nextDay, arrival: true, segment, valuationAmount: participant.valuationAmount };
 }
 
