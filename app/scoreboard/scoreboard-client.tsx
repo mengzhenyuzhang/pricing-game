@@ -27,8 +27,25 @@ type HistogramBucket = {
   count: number;
 };
 
+type RunInfo = {
+  id: string;
+  name: string;
+  status: string;
+  type: string;
+  revealPrices: boolean;
+  revealValuationHistogram: boolean;
+  currentDrawOrder: number;
+};
+
+type RunScoreboard = {
+  run: RunInfo;
+  results: Row[];
+  prices: PriceRow[];
+  valuationHistogram: HistogramBucket[];
+};
+
 export function ScoreboardClient() {
-  const [data, setData] = useState<{ run: null | { name: string; status: string; type: string; revealPrices: boolean; revealValuationHistogram: boolean }; results: Row[]; prices: PriceRow[]; valuationHistogram: HistogramBucket[] }>({ run: null, results: [], prices: [], valuationHistogram: [] });
+  const [data, setData] = useState<{ run: RunInfo | null; results: Row[]; prices: PriceRow[]; valuationHistogram: HistogramBucket[]; runs: RunScoreboard[] }>({ run: null, results: [], prices: [], valuationHistogram: [], runs: [] });
   const [large, setLarge] = useState(false);
 
   useEffect(() => {
@@ -45,21 +62,36 @@ export function ScoreboardClient() {
     };
   }, []);
 
-  const chartData = useMemo(() => data.results.map((row) => ({ team: `T${row.teamNumber}`, revenue: row.revenue })), [data.results]);
-  const pricesByTeam = useMemo(() => new Map(data.prices.map((price) => [price.team.teamNumber, price])), [data.prices]);
-
   if (!data.run) return <div className="panel p-8 text-center text-2xl font-bold">No simulated scoreboard is available yet.</div>;
-  const run = data.run;
+  const runs = data.runs.length ? data.runs : [{ run: data.run, results: data.results, prices: data.prices, valuationHistogram: data.valuationHistogram }];
   return (
     <div className={large ? "space-y-5 text-xl" : "space-y-5"}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-4xl font-black">{data.run.name}</h1>
+          <h1 className="text-4xl font-black">Scoreboard</h1>
           <p className="font-semibold text-slate-600">Refreshes every 5 seconds</p>
         </div>
         <button className="btn-secondary" onClick={() => setLarge((value) => !value)}>{large ? "Standard display" : "Large display"}</button>
       </div>
-      <section className="panel h-72 p-4">
+      {runs.map((runData) => <RunPanel key={runData.run.id} data={runData} />)}
+    </div>
+  );
+}
+
+function RunPanel({ data }: { data: RunScoreboard }) {
+  const chartData = useMemo(() => data.results.map((row) => ({ team: `T${row.teamNumber}`, revenue: row.revenue })), [data.results]);
+  const pricesByTeam = useMemo(() => new Map(data.prices.map((price) => [price.team.teamNumber, price])), [data.prices]);
+  const run = data.run;
+
+  return (
+    <section className="panel space-y-4 p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-black">{run.name}</h2>
+          <p className="font-semibold text-slate-600">{run.type} · {run.status} · through day {run.currentDrawOrder}</p>
+        </div>
+      </div>
+      <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -69,14 +101,12 @@ export function ScoreboardClient() {
             <Bar dataKey="revenue" fill="#12355b" />
           </BarChart>
         </ResponsiveContainer>
-      </section>
+      </div>
       {run.revealValuationHistogram ? (
-        <section className="panel p-4">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 className="text-2xl font-black">Valuation Histogram</h2>
-              <p className="text-sm font-semibold text-slate-600">Revealed by instructor. Shows arrival customer valuations in $1,000 buckets.</p>
-            </div>
+        <div>
+          <div className="mb-3">
+            <h3 className="text-2xl font-black">Arrival Valuation Histogram</h3>
+            <p className="text-sm font-semibold text-slate-600">Buckets adjust to this run&apos;s arrival customer valuations.</p>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -89,9 +119,9 @@ export function ScoreboardClient() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </section>
+        </div>
       ) : null}
-      <section className="panel overflow-x-auto">
+      <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600">
             <tr>
@@ -125,7 +155,7 @@ export function ScoreboardClient() {
             })}
           </tbody>
         </table>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }

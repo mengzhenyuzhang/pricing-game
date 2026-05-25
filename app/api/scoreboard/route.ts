@@ -1,20 +1,31 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { publicEventJson } from "@/lib/game";
+import { buildAdaptiveHistogram } from "@/lib/histogram";
 import type { SimulationEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const run = await prisma.gameRun.findFirst({
-    where: { status: { in: ["SIMULATED", "REVEALED"] } },
+  const classSession = await prisma.classSession.findFirst({ orderBy: { updatedAt: "desc" } });
+  if (!classSession) return NextResponse.json({ run: null, results: [], runs: [] });
+  const runs = await prisma.gameRun.findMany({
+    where: { classSessionId: classSession.id, status: { in: ["SIMULATED", "REVEALED"] } },
     orderBy: { updatedAt: "desc" },
     include: { results: { include: { team: true }, orderBy: { rank: "asc" } } }
   });
-  if (!run) return NextResponse.json({ run: null, results: [] });
+  if (!runs.length) return NextResponse.json({ run: null, results: [], runs: [] });
+  const historicalRuns = await Promise.all(runs.map((run) => serializeRun(run)));
+  return NextResponse.json({
+    ...historicalRuns[0],
+    runs: historicalRuns
+  });
+}
+
+async function serializeRun(run: Awaited<ReturnType<typeof prisma.gameRun.findMany>>[number] & { results: Array<{ teamId: string; eventsJson: string }> }) {
   const activeTeams = await prisma.team.findMany({ where: { classSessionId: run.classSessionId, active: true }, orderBy: { teamNumber: "asc" } });
   const valuationHistogram = run.revealValuationHistogram
-    ? buildHistogram(
+    ? buildAdaptiveHistogram(
         (
           await prisma.customerDraw.findMany({
             where: { gameRunId: run.id, useInRun: true, drawOrder: { lte: run.currentDrawOrder } },
@@ -24,7 +35,7 @@ export async function GET() {
       )
     : [];
   const resultByTeam = new Map(run.results.map((result) => [result.teamId, result]));
-  return NextResponse.json({
+  return {
     run: {
       id: run.id,
       name: run.name,
@@ -59,21 +70,7 @@ export async function GET() {
         })
       : [],
     valuationHistogram
-  });
-}
-
-function buildHistogram(values: number[]) {
-  if (!values.length) return [];
-  const bucketSize = 1000;
-  const maxBucket = Math.max(9, Math.floor(Math.max(...values) / bucketSize));
-  const buckets = Array.from({ length: maxBucket + 1 }, (_, index) => ({
-    bucket: `$${(index * bucketSize).toLocaleString()}-${((index + 1) * bucketSize - 1).toLocaleString()}`,
-    count: 0
-  }));
-  for (const value of values) {
-    buckets[Math.min(maxBucket, Math.floor(value / bucketSize))].count += 1;
-  }
-  return buckets;
+  };
 }
 
 function summarizeThroughDraw(eventsJson: string, currentDrawOrder: number) {

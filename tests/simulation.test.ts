@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { quantileCutoff } from "../lib/segments";
+import { buildAdaptiveHistogram } from "../lib/histogram";
 import { serializePublicScoreboard, simulateDynamic, simulatePostscreening, simulateStatic } from "../lib/simulation";
 import type { Decision, Draw } from "../lib/types";
 
@@ -14,6 +15,15 @@ describe("simulation logic", () => {
   it("computes postscreening cutoff from a valuation quantile", () => {
     expect(quantileCutoff([100, 200, 300, 400, 500], 0.4)).toBe(300);
     expect(quantileCutoff([100, 200, 300, 400, 500], 0.8)).toBe(500);
+  });
+
+  it("builds adaptive histogram buckets from valuation spread", () => {
+    const narrow = buildAdaptiveHistogram([2100, 2150, 2200, 2300, 2400]);
+    const wide = buildAdaptiveHistogram([100, 900, 2500, 7000, 9800]);
+    expect(narrow.length).toBeGreaterThan(1);
+    expect(narrow.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(5);
+    expect(wide.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(5);
+    expect(narrow.map((bucket) => bucket.bucket)).not.toEqual(wide.map((bucket) => bucket.bucket));
   });
 
   it("simulates static pricing", () => {
