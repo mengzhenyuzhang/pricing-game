@@ -35,7 +35,14 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
   const submittedTeamIds = new Set(run.decisions.map((decision) => decision.teamId));
   const missing = teams.filter((team) => !submittedTeamIds.has(team.id));
   const canProceedDay = run.status === "SIMULATED" || run.status === "REVEALED";
-  const nextDay = run.currentDrawOrder + 1;
+  const nextDay = run.type === "DYNAMIC" ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
+  const dynamicDone = run.type === "DYNAMIC" && nextDay > run.dynamicPeriods;
+  const currentPeriodDecisionTeamIds = new Set(
+    run.type === "DYNAMIC"
+      ? run.decisions.filter((decision) => decision.period?.periodNumber === nextDay).map((decision) => decision.teamId)
+      : run.decisions.map((decision) => decision.teamId)
+  );
+  const missingCurrentDay = teams.filter((team) => !currentPeriodDecisionTeamIds.has(team.id));
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -47,7 +54,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
         {searchParams.message ? <p className="mt-3 rounded-md bg-mint p-3 font-semibold text-slate-900">{searchParams.message}</p> : null}
         <p className="mt-2 text-slate-700">{statusHelp(run.status, run.currentDrawOrder, run.draws.length)}</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <ControlButton runId={run.id} action="open" label="Open submissions" pendingText="Opening..." disabled={run.status === "OPEN"} />
+          <ControlButton runId={run.id} action="open" label={run.type === "DYNAMIC" ? "Open day 1 pricing" : "Open submissions"} pendingText="Opening..." disabled={run.status === "OPEN"} />
           <ControlButton runId={run.id} action="lock" label="Lock submissions" pendingText="Locking..." disabled={run.status !== "OPEN"} />
           <ControlButton runId={run.id} action="simulate" label="Start day-by-day simulation" pendingText="Starting..." disabled={run.status === "OPEN" || run.decisions.length === 0} />
           <ControlButton runId={run.id} action="reveal" label="Reveal scoreboard" pendingText="Revealing..." disabled={run.status !== "SIMULATED" && run.status !== "REVEALED"} />
@@ -55,14 +62,15 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
           <ControlButton runId={run.id} action="revealHistogram" label="Reveal valuation histogram" pendingText="Revealing histogram..." />
           <ControlButton runId={run.id} action="reset" label="Reset run" pendingText="Resetting..." />
         </div>
-        <p className="mt-3 text-sm text-slate-600">After submissions are locked, start the day-by-day simulation. The scoreboard begins at day 0 and updates as you proceed.</p>
+        <p className="mt-3 text-sm text-slate-600">{run.type === "DYNAMIC" ? "Dynamic pricing opens one day at a time. Teams submit a fresh price for the current day before you proceed." : "After submissions are locked, start the day-by-day simulation. The scoreboard begins at day 0 and updates as you proceed."}</p>
       </section>
       <section className="panel p-5">
         <h2 className="text-2xl font-black">Proceed to Next Day</h2>
         <p className="mt-2 text-slate-700">Day {nextDay}: choose whether an arrival occurs. If there is an arrival, the app randomly draws one checked-in valuation and recomputes the scoreboard.</p>
+        {run.type === "DYNAMIC" ? <p className="mt-2 rounded-md bg-mint p-3 text-sm font-semibold">Current dynamic pricing day: {nextDay}. Missing day-{nextDay} prices: {missingCurrentDay.length ? missingCurrentDay.map((team) => team.name).join(", ") : "none"}.</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          <ControlButton runId={run.id} action="nextDayNoArrival" label={`Proceed to day ${nextDay}: no arrival`} pendingText="Proceeding..." disabled={!canProceedDay} />
-          <ControlButton runId={run.id} action="nextDayRandomArrival" label={`Proceed to day ${nextDay}: random arrival`} pendingText="Drawing arrival..." disabled={!canProceedDay} />
+          <ControlButton runId={run.id} action="nextDayNoArrival" label={`Proceed to day ${nextDay}: no arrival`} pendingText="Proceeding..." disabled={(!canProceedDay && run.type !== "DYNAMIC") || dynamicDone} />
+          <ControlButton runId={run.id} action="nextDayRandomArrival" label={`Proceed to day ${nextDay}: random arrival`} pendingText="Drawing arrival..." disabled={(!canProceedDay && run.type !== "DYNAMIC") || dynamicDone || (run.type === "DYNAMIC" && missingCurrentDay.length > 0)} />
           {run.type === "POSTSCREENING" ? (
             <>
               <ControlButton runId={run.id} action="nextDayLowArrival" label={`Proceed to day ${nextDay}: below cutoff`} pendingText="Drawing below cutoff..." disabled={!canProceedDay} />
@@ -70,7 +78,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
             </>
           ) : null}
         </div>
-        <p className="mt-3 text-sm text-slate-600">For postscreening, below cutoff draws from the low segment and above cutoff draws from the high segment.</p>
+        <p className="mt-3 text-sm text-slate-600">{run.type === "DYNAMIC" ? "After you proceed, the next day opens automatically so students can adjust prices again." : "For postscreening, below cutoff draws from the low segment and above cutoff draws from the high segment."}</p>
       </section>
       {run.periods.length ? (
         <section className="panel p-5">
@@ -90,7 +98,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
         </section>
       ) : null}
       <section className="grid gap-4 md:grid-cols-4">
-        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Current day</p><p className="text-3xl font-black">{run.currentDrawOrder}</p><p className="text-sm text-slate-500">{run.draws.length} arrival day(s)</p></div>
+        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Current day</p><p className="text-3xl font-black">{run.currentDrawOrder}</p><p className="text-sm text-slate-500">{run.draws.length} arrival day(s){run.type === "DYNAMIC" ? ` / ${run.dynamicPeriods} pricing days` : ""}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Submitted teams</p><p className="text-3xl font-black">{submittedTeamIds.size}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Missing teams</p><p className="text-3xl font-black">{missing.length}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Results</p><p className="text-3xl font-black">{run.results.length}</p></div>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSession, requireAdmin } from "@/lib/auth";
-import { addDayToRun, getCurrentClassSession, runSimulation } from "@/lib/game";
+import { addDayToRun, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { defaultCapacity, defaultDrawCount, generateAttendanceAwareTeamAssignments } from "@/lib/team-generation";
 import { classSessionSchema, loginSchema, manualValuationSchema, publishAssignmentSchema, runSchema, teamManualSchema } from "@/lib/validation";
@@ -212,8 +212,9 @@ export async function controlRun(formData: FormData) {
   if (action === "open") {
     const run = await prisma.gameRun.update({ where: { id: runId }, data: { status: "OPEN", currentDrawOrder: 0 } });
     await prisma.classSession.update({ where: { id: run.classSessionId }, data: { status: "GAME_ACTIVE" } });
-    if (periodId) await prisma.roundPeriod.update({ where: { id: periodId }, data: { status: "OPEN", deadline: new Date(Date.now() + 90_000) } });
-    message = periodId ? "Period opened. Teams can submit decisions." : "Run opened. Teams can submit decisions.";
+    if (periodId) await prisma.roundPeriod.update({ where: { id: periodId }, data: { status: "OPEN", deadline: null } });
+    if (run.type === "DYNAMIC" && !periodId) await openDynamicPricingDay(run.id, 1);
+    message = run.type === "DYNAMIC" && !periodId ? "Day 1 pricing is open. Teams can submit prices." : periodId ? "Period opened. Teams can submit decisions." : "Run opened. Teams can submit decisions.";
   }
   if (action === "lock") {
     if (periodId) await prisma.roundPeriod.update({ where: { id: periodId }, data: { status: "LOCKED" } });
@@ -222,7 +223,9 @@ export async function controlRun(formData: FormData) {
   }
   if (action === "simulate") {
     await runSimulation(runId);
-    message = "Day-by-day simulation is ready. Use the next-day controls.";
+    const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: runId } });
+    if (run.type === "DYNAMIC") await openDynamicPricingDay(runId, run.currentPeriod ?? 1);
+    message = run.type === "DYNAMIC" ? `Day ${run.currentPeriod ?? 1} pricing remains open. Use next-day controls after teams submit.` : "Day-by-day simulation is ready. Use the next-day controls.";
   }
   if (action === "reveal") {
     await prisma.gameRun.update({ where: { id: runId }, data: { status: "REVEALED" } });

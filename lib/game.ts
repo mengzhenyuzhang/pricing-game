@@ -17,7 +17,7 @@ export async function getCurrentClassSession() {
 
 export async function getPlayableRun(classSessionId?: string) {
   const period = await prisma.roundPeriod.findFirst({
-    where: { status: "OPEN", gameRun: { status: "OPEN", ...(classSessionId ? { classSessionId } : {}) } },
+    where: { status: "OPEN", gameRun: { status: { in: ["OPEN", "SIMULATED", "REVEALED"] }, ...(classSessionId ? { classSessionId } : {}) } },
     include: { gameRun: true },
     orderBy: [{ updatedAt: "desc" }]
   });
@@ -62,9 +62,12 @@ export async function buildStaticDecisions(gameRunId: string): Promise<Decision[
 }
 
 export async function buildDynamicDecisions(gameRunId: string): Promise<Decision[]> {
+  const draws = await prisma.customerDraw.findMany({ where: { gameRunId, useInRun: true, periodNumber: { not: null } } });
+  const periodNumbers = [...new Set(draws.map((draw) => draw.periodNumber).filter((periodNumber): periodNumber is number => Boolean(periodNumber)))];
+  if (!periodNumbers.length) return [];
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId } });
   const periods = await prisma.roundPeriod.findMany({
-    where: { gameRunId },
+    where: { gameRunId, periodNumber: { in: periodNumbers } },
     orderBy: { periodNumber: "asc" }
   });
   const teams = await prisma.team.findMany({ where: { classSessionId: run.classSessionId, active: true }, orderBy: { teamNumber: "asc" } });
@@ -173,9 +176,13 @@ export async function ensureDrawForRun(gameRunId: string) {
 
 export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDOM" | "LOW" | "HIGH") {
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId }, include: { periods: true } });
-  const nextDay = run.currentDrawOrder + 1;
+  const nextDay = run.type === "DYNAMIC" ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
+  if (run.type === "DYNAMIC" && nextDay > run.dynamicPeriods) {
+    throw new Error("All dynamic pricing days have already been completed.");
+  }
   await prisma.customerDraw.deleteMany({ where: { gameRunId, drawOrder: nextDay } });
   if (mode === "NO_ARRIVAL") {
+    await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, run.dynamicPeriods, run.status === "REVEALED");
     await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: nextDay, status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED" } });
     return { day: nextDay, arrival: false };
   }
@@ -211,13 +218,35 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
       customerLabel: `Day ${nextDay}`,
       segment,
       drawOrder: nextDay,
-      periodNumber: run.type === "DYNAMIC" ? Math.min(run.dynamicPeriods, Math.max(1, nextDay)) : null,
+      periodNumber: run.type === "DYNAMIC" ? nextDay : null,
       useInRun: true
     }
   });
   await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: nextDay, status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED" } });
   await runSimulation(gameRunId);
+  await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, run.dynamicPeriods, run.status === "REVEALED");
   return { day: nextDay, arrival: true, segment, valuationAmount: participant.valuationAmount };
+}
+
+export async function openDynamicPricingDay(gameRunId: string, day: number) {
+  const period = await prisma.roundPeriod.upsert({
+    where: { gameRunId_periodNumber: { gameRunId, periodNumber: day } },
+    update: { status: "OPEN", label: `Day ${day}`, instructions: `Submit your team's price for day ${day}.`, deadline: null },
+    create: { gameRunId, periodNumber: day, label: `Day ${day}`, status: "OPEN", instructions: `Submit your team's price for day ${day}.` }
+  });
+  await prisma.roundPeriod.updateMany({ where: { gameRunId, id: { not: period.id }, status: "OPEN" }, data: { status: "LOCKED" } });
+  await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentPeriod: day } });
+}
+
+async function advanceDynamicPeriodIfNeeded(gameRunId: string, type: string, completedDay: number, dynamicPeriods: number, revealed: boolean) {
+  if (type !== "DYNAMIC") return;
+  await prisma.roundPeriod.updateMany({ where: { gameRunId, periodNumber: completedDay }, data: { status: "SIMULATED" } });
+  if (completedDay < dynamicPeriods) {
+    await openDynamicPricingDay(gameRunId, completedDay + 1);
+    await prisma.gameRun.update({ where: { id: gameRunId }, data: { status: revealed ? "REVEALED" : "SIMULATED" } });
+  } else {
+    await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentPeriod: completedDay, status: revealed ? "REVEALED" : "SIMULATED" } });
+  }
 }
 
 function segmentFor(type: string, amount: number, cutoff?: number | null) {
