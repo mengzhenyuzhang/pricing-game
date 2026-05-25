@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function TeamPage() {
   const participant = await requireParticipant();
   if (!participant.teamId || !participant.team) redirect("/lobby");
-  const playable = await getPlayableRun();
+  const playable = await getPlayableRun(participant.classSessionId);
   const activeDecision = playable
     ? await prisma.activeDecision.findFirst({
         where: { gameRunId: playable.run.id, periodId: playable.period?.id ?? null, teamId: participant.teamId },
@@ -22,6 +22,7 @@ export default async function TeamPage() {
         <p className="text-sm font-bold uppercase tracking-wide text-coral">{participant.classSession.name}</p>
         <h1 className="mt-2 text-4xl font-black">{participant.team.name}</h1>
         <p className="mt-2 inline-flex rounded-full bg-mint px-3 py-1 text-sm font-bold">{teamTypeLabel(participant.team.attendanceMix)}</p>
+        <p className="mt-3 text-sm text-slate-600">Signed in as <span className="font-bold">{participant.displayName}</span>. Testing multiple students on one laptop requires separate browser profiles/incognito windows, or use <a className="font-bold text-coral underline" href="/api/logout">switch student</a>.</p>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           {participant.team.participants.map((member) => (
             <div className="rounded-md bg-slate-50 px-3 py-2" key={member.id}>

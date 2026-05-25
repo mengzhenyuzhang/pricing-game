@@ -15,16 +15,16 @@ export async function getCurrentClassSession() {
   return session;
 }
 
-export async function getPlayableRun() {
+export async function getPlayableRun(classSessionId?: string) {
   const period = await prisma.roundPeriod.findFirst({
-    where: { status: "OPEN", gameRun: { status: "OPEN" } },
+    where: { status: "OPEN", gameRun: { status: "OPEN", ...(classSessionId ? { classSessionId } : {}) } },
     include: { gameRun: true },
     orderBy: [{ updatedAt: "desc" }]
   });
   if (period) return { run: period.gameRun, period };
 
   const run = await prisma.gameRun.findFirst({
-    where: { status: "OPEN", type: { not: "DYNAMIC" } },
+    where: { status: "OPEN", type: { not: "DYNAMIC" }, ...(classSessionId ? { classSessionId } : {}) },
     orderBy: { updatedAt: "desc" }
   });
   return run ? { run, period: null } : null;
@@ -97,7 +97,10 @@ export async function buildDynamicDecisions(gameRunId: string): Promise<Decision
 export async function runSimulation(gameRunId: string) {
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId } });
   const draws = await buildDraws(gameRunId);
-  if (draws.length === 0) throw new Error("No customer draw exists for this run.");
+  if (draws.length === 0) {
+    await prisma.gameRun.update({ where: { id: gameRunId }, data: { status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED", currentDrawOrder: run.currentDrawOrder } });
+    return [];
+  }
 
   let results: SimulationResult[];
   if (run.type === "DYNAMIC") {
@@ -125,7 +128,7 @@ export async function runSimulation(gameRunId: string) {
         }
       });
     }
-    await tx.gameRun.update({ where: { id: gameRunId }, data: { status: "SIMULATED" } });
+    await tx.gameRun.update({ where: { id: gameRunId }, data: { status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED", currentDrawOrder: run.currentDrawOrder } });
     await tx.roundPeriod.updateMany({
       where: { gameRunId, status: "LOCKED" },
       data: { status: "SIMULATED" }
@@ -166,6 +169,55 @@ export async function ensureDrawForRun(gameRunId: string) {
     };
   });
   if (data.length) await prisma.customerDraw.createMany({ data });
+}
+
+export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDOM" | "LOW" | "HIGH") {
+  const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId }, include: { periods: true } });
+  const nextDay = run.currentDrawOrder + 1;
+  await prisma.customerDraw.deleteMany({ where: { gameRunId, drawOrder: nextDay } });
+  if (mode === "NO_ARRIVAL") {
+    await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: nextDay, status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED" } });
+    return { day: nextDay, arrival: false };
+  }
+
+  const alreadyDrawn = await prisma.customerDraw.findMany({ where: { gameRunId, participantId: { not: null } }, select: { participantId: true } });
+  const usedIds = alreadyDrawn.map((draw) => draw.participantId!).filter(Boolean);
+  const cutoff = run.segmentCutoff ?? 3500;
+  const participants = await prisma.participant.findMany({
+    where: {
+      classSessionId: run.classSessionId,
+      id: usedIds.length ? { notIn: usedIds } : undefined,
+      ...(run.type === "POSTSCREENING" && mode === "LOW" ? { valuationAmount: { lt: cutoff } } : {}),
+      ...(run.type === "POSTSCREENING" && mode === "HIGH" ? { valuationAmount: { gte: cutoff } } : {})
+    }
+  });
+  const pool = participants.length
+    ? participants
+    : await prisma.participant.findMany({
+        where: {
+          classSessionId: run.classSessionId,
+          ...(run.type === "POSTSCREENING" && mode === "LOW" ? { valuationAmount: { lt: cutoff } } : {}),
+          ...(run.type === "POSTSCREENING" && mode === "HIGH" ? { valuationAmount: { gte: cutoff } } : {})
+        }
+      });
+  if (!pool.length) throw new Error("No matching checked-in participants are available to draw.");
+  const participant = pool[Math.floor(Math.random() * pool.length)];
+  const segment = run.type === "POSTSCREENING" ? segmentFor(run.type, participant.valuationAmount, run.segmentCutoff) : "UNKNOWN";
+  await prisma.customerDraw.create({
+    data: {
+      gameRunId,
+      participantId: participant.id,
+      valuationAmountSnapshot: participant.valuationAmount,
+      customerLabel: `Day ${nextDay}`,
+      segment,
+      drawOrder: nextDay,
+      periodNumber: run.type === "DYNAMIC" ? Math.min(run.dynamicPeriods, Math.max(1, nextDay)) : null,
+      useInRun: true
+    }
+  });
+  await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: nextDay, status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED" } });
+  await runSimulation(gameRunId);
+  return { day: nextDay, arrival: true, segment, valuationAmount: participant.valuationAmount };
 }
 
 function segmentFor(type: string, amount: number, cutoff?: number | null) {

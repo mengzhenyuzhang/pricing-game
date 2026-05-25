@@ -3,21 +3,22 @@ import { controlRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PendingButton } from "@/components/PendingButton";
 
 export const dynamic = "force-dynamic";
 
-function ControlButton({ runId, action, periodId, label }: { runId: string; action: string; periodId?: string; label?: string }) {
+function ControlButton({ runId, action, periodId, label, disabled = false, pendingText }: { runId: string; action: string; periodId?: string; label?: string; disabled?: boolean; pendingText?: string }) {
   return (
     <form action={controlRun}>
       <input type="hidden" name="runId" value={runId} />
       <input type="hidden" name="action" value={action} />
       {periodId ? <input type="hidden" name="periodId" value={periodId} /> : null}
-      <button className="btn-secondary">{label ?? action}</button>
+      <PendingButton disabled={disabled} pendingText={pendingText}>{label ?? action}</PendingButton>
     </form>
   );
 }
 
-export default async function RunDetailPage({ params }: { params: { id: string } }) {
+export default async function RunDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { message?: string } }) {
   await requireAdmin();
   const run = await prisma.gameRun.findUnique({
     where: { id: params.id },
@@ -33,6 +34,8 @@ export default async function RunDetailPage({ params }: { params: { id: string }
   const teams = await prisma.team.findMany({ where: { classSessionId: run.classSessionId, active: true }, orderBy: { teamNumber: "asc" } });
   const submittedTeamIds = new Set(run.decisions.map((decision) => decision.teamId));
   const missing = teams.filter((team) => !submittedTeamIds.has(team.id));
+  const canProceedDay = run.status === "SIMULATED" || run.status === "REVEALED";
+  const nextDay = run.currentDrawOrder + 1;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -41,9 +44,33 @@ export default async function RunDetailPage({ params }: { params: { id: string }
       </div>
       <section className="panel p-5">
         <h2 className="text-2xl font-black">Run Controls</h2>
+        {searchParams.message ? <p className="mt-3 rounded-md bg-mint p-3 font-semibold text-slate-900">{searchParams.message}</p> : null}
+        <p className="mt-2 text-slate-700">{statusHelp(run.status, run.currentDrawOrder, run.draws.length)}</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {["open", "lock", "simulate", "reveal", "revealPrices", "revealHistogram", "reset"].map((action) => <ControlButton key={action} runId={run.id} action={action} />)}
+          <ControlButton runId={run.id} action="open" label="Open submissions" pendingText="Opening..." disabled={run.status === "OPEN"} />
+          <ControlButton runId={run.id} action="lock" label="Lock submissions" pendingText="Locking..." disabled={run.status !== "OPEN"} />
+          <ControlButton runId={run.id} action="simulate" label="Start day-by-day simulation" pendingText="Starting..." disabled={run.status === "OPEN" || run.decisions.length === 0} />
+          <ControlButton runId={run.id} action="reveal" label="Reveal scoreboard" pendingText="Revealing..." disabled={run.status !== "SIMULATED" && run.status !== "REVEALED"} />
+          <ControlButton runId={run.id} action="revealPrices" label="Reveal team prices" pendingText="Revealing prices..." disabled={run.revealPrices} />
+          <ControlButton runId={run.id} action="revealHistogram" label="Reveal valuation histogram" pendingText="Revealing histogram..." />
+          <ControlButton runId={run.id} action="reset" label="Reset run" pendingText="Resetting..." />
         </div>
+        <p className="mt-3 text-sm text-slate-600">After submissions are locked, start the day-by-day simulation. The scoreboard begins at day 0 and updates as you proceed.</p>
+      </section>
+      <section className="panel p-5">
+        <h2 className="text-2xl font-black">Proceed to Next Day</h2>
+        <p className="mt-2 text-slate-700">Day {nextDay}: choose whether an arrival occurs. If there is an arrival, the app randomly draws one checked-in valuation and recomputes the scoreboard.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <ControlButton runId={run.id} action="nextDayNoArrival" label={`Proceed to day ${nextDay}: no arrival`} pendingText="Proceeding..." disabled={!canProceedDay} />
+          <ControlButton runId={run.id} action="nextDayRandomArrival" label={`Proceed to day ${nextDay}: random arrival`} pendingText="Drawing arrival..." disabled={!canProceedDay} />
+          {run.type === "POSTSCREENING" ? (
+            <>
+              <ControlButton runId={run.id} action="nextDayLowArrival" label={`Proceed to day ${nextDay}: below cutoff`} pendingText="Drawing below cutoff..." disabled={!canProceedDay} />
+              <ControlButton runId={run.id} action="nextDayHighArrival" label={`Proceed to day ${nextDay}: above cutoff`} pendingText="Drawing above cutoff..." disabled={!canProceedDay} />
+            </>
+          ) : null}
+        </div>
+        <p className="mt-3 text-sm text-slate-600">For postscreening, below cutoff draws from the low segment and above cutoff draws from the high segment.</p>
       </section>
       {run.periods.length ? (
         <section className="panel p-5">
@@ -63,7 +90,7 @@ export default async function RunDetailPage({ params }: { params: { id: string }
         </section>
       ) : null}
       <section className="grid gap-4 md:grid-cols-4">
-        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Customer draw</p><p className="text-3xl font-black">{run.draws.length}</p></div>
+        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Current day</p><p className="text-3xl font-black">{run.currentDrawOrder}</p><p className="text-sm text-slate-500">{run.draws.length} arrival day(s)</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Submitted teams</p><p className="text-3xl font-black">{submittedTeamIds.size}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Missing teams</p><p className="text-3xl font-black">{missing.length}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Results</p><p className="text-3xl font-black">{run.results.length}</p></div>
@@ -82,4 +109,13 @@ export default async function RunDetailPage({ params }: { params: { id: string }
       ) : null}
     </div>
   );
+}
+
+function statusHelp(status: string, currentDrawOrder: number, drawCount: number) {
+  if (status === "DRAFT") return "Draft: set up the run, then open submissions.";
+  if (status === "OPEN") return "Open: teams can submit or revise decisions.";
+  if (status === "LOCKED") return "Locked: submissions are closed. Start the day-by-day simulation when ready.";
+  if (status === "SIMULATED") return `Simulation ready: current day is ${currentDrawOrder}. ${drawCount} day(s) have had arrivals.`;
+  if (status === "REVEALED") return `Revealed: current day is ${currentDrawOrder}. ${drawCount} day(s) have had arrivals.`;
+  return status;
 }

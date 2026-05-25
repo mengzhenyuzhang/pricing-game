@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSession, requireAdmin } from "@/lib/auth";
-import { ensureDrawForRun, getCurrentClassSession, runSimulation } from "@/lib/game";
+import { addDayToRun, getCurrentClassSession, runSimulation } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { defaultCapacity, defaultDrawCount, generateAttendanceAwareTeamAssignments } from "@/lib/team-generation";
 import { classSessionSchema, loginSchema, manualValuationSchema, publishAssignmentSchema, runSchema, teamManualSchema } from "@/lib/validation";
@@ -176,7 +176,6 @@ export async function createPresetRun(formData: FormData) {
       await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Period ${i}`, instructions: "Submit the price your team wants to use for this period." } });
     }
   }
-  await ensureDrawForRun(run.id);
   revalidatePath(`/admin/class-sessions/${classSessionId}/runs`);
   redirect(`/admin/run/${run.id}`);
 }
@@ -201,7 +200,6 @@ export async function createCustomRun(formData: FormData) {
       await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Period ${i}` } });
     }
   }
-  await ensureDrawForRun(run.id);
   redirect(`/admin/run/${run.id}`);
 }
 
@@ -210,30 +208,62 @@ export async function controlRun(formData: FormData) {
   const runId = String(formData.get("runId"));
   const action = String(formData.get("action"));
   const periodId = formData.get("periodId") ? String(formData.get("periodId")) : null;
+  let message = "Action complete.";
   if (action === "open") {
-    const run = await prisma.gameRun.update({ where: { id: runId }, data: { status: "OPEN" } });
+    const run = await prisma.gameRun.update({ where: { id: runId }, data: { status: "OPEN", currentDrawOrder: 0 } });
     await prisma.classSession.update({ where: { id: run.classSessionId }, data: { status: "GAME_ACTIVE" } });
     if (periodId) await prisma.roundPeriod.update({ where: { id: periodId }, data: { status: "OPEN", deadline: new Date(Date.now() + 90_000) } });
+    message = periodId ? "Period opened. Teams can submit decisions." : "Run opened. Teams can submit decisions.";
   }
   if (action === "lock") {
     if (periodId) await prisma.roundPeriod.update({ where: { id: periodId }, data: { status: "LOCKED" } });
     else await prisma.gameRun.update({ where: { id: runId }, data: { status: "LOCKED" } });
+    message = "Submissions locked.";
   }
-  if (action === "simulate") await runSimulation(runId);
-  if (action === "reveal") await prisma.gameRun.update({ where: { id: runId }, data: { status: "REVEALED" } });
-  if (action === "revealPrices") await prisma.gameRun.update({ where: { id: runId }, data: { revealPrices: true } });
-  if (action === "revealHistogram") await prisma.gameRun.update({ where: { id: runId }, data: { revealValuationHistogram: true } });
+  if (action === "simulate") {
+    await runSimulation(runId);
+    message = "Day-by-day simulation is ready. Use the next-day controls.";
+  }
+  if (action === "reveal") {
+    await prisma.gameRun.update({ where: { id: runId }, data: { status: "REVEALED" } });
+    message = "Scoreboard revealed.";
+  }
+  if (action === "revealPrices") {
+    await prisma.gameRun.update({ where: { id: runId }, data: { revealPrices: true } });
+    message = "Team prices revealed.";
+  }
+  if (action === "revealHistogram") {
+    await prisma.gameRun.update({ where: { id: runId }, data: { revealValuationHistogram: true } });
+    message = "Valuation histogram revealed.";
+  }
+  if (action === "nextDayNoArrival") {
+    const result = await addDayToRun(runId, "NO_ARRIVAL");
+    message = `Day ${result.day}: no arrival.`;
+  }
+  if (action === "nextDayRandomArrival") {
+    const result = await addDayToRun(runId, "RANDOM");
+    message = `Day ${result.day}: random arrival drawn.`;
+  }
+  if (action === "nextDayLowArrival") {
+    const result = await addDayToRun(runId, "LOW");
+    message = `Day ${result.day}: below-cutoff arrival drawn.`;
+  }
+  if (action === "nextDayHighArrival") {
+    const result = await addDayToRun(runId, "HIGH");
+    message = `Day ${result.day}: above-cutoff arrival drawn.`;
+  }
   if (action === "reset") {
     await prisma.teamResult.deleteMany({ where: { gameRunId: runId } });
     await prisma.activeDecision.deleteMany({ where: { gameRunId: runId } });
     await prisma.submission.deleteMany({ where: { gameRunId: runId } });
     await prisma.customerDraw.deleteMany({ where: { gameRunId: runId } });
-    await prisma.gameRun.update({ where: { id: runId }, data: { status: "DRAFT", revealPrices: false, revealValuationHistogram: false } });
+    await prisma.gameRun.update({ where: { id: runId }, data: { status: "DRAFT", revealPrices: false, revealValuationHistogram: false, currentDrawOrder: 0 } });
     await prisma.roundPeriod.updateMany({ where: { gameRunId: runId }, data: { status: "DRAFT" } });
-    await ensureDrawForRun(runId);
+    message = "Run reset.";
   }
   revalidatePath(`/admin/run/${runId}`);
   revalidatePath("/scoreboard");
+  redirect(`/admin/run/${runId}?message=${encodeURIComponent(message)}`);
 }
 
 function shortCode() {

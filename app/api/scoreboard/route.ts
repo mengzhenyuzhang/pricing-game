@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { publicEventJson } from "@/lib/game";
+import type { SimulationEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,22 +21,26 @@ export async function GET() {
       type: run.type,
       status: run.status,
       revealPrices: run.revealPrices,
-      revealValuationHistogram: run.revealValuationHistogram
+      revealValuationHistogram: run.revealValuationHistogram,
+      currentDrawOrder: run.currentDrawOrder
     },
     results: activeTeams.map((team) => {
       const result = resultByTeam.get(team.id);
+      const partial = result ? summarizeThroughDraw(result.eventsJson, run.currentDrawOrder) : null;
       return {
-        rank: result?.rank ?? null,
+        rank: null,
         teamName: team.name,
         teamNumber: team.teamNumber,
-        sales: result?.sales ?? 0,
-        lowSales: result?.lowSales ?? 0,
-        highSales: result?.highSales ?? 0,
-        revenue: result?.revenue ?? 0,
-        capacityUsed: result?.capacityUsed ?? 0,
-        eventsJson: result ? publicEventJson(result.eventsJson) : "[]"
+        sales: partial?.sales ?? 0,
+        lowSales: partial?.lowSales ?? 0,
+        highSales: partial?.highSales ?? 0,
+        revenue: partial?.revenue ?? 0,
+        capacityUsed: partial?.capacityUsed ?? 0,
+        eventsJson: result ? publicEventJson(JSON.stringify(partial?.events ?? [])) : "[]"
       };
-    }).sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999) || a.teamNumber - b.teamNumber),
+    })
+      .sort((a, b) => b.revenue - a.revenue || b.sales - a.sales || a.capacityUsed - b.capacityUsed || a.teamNumber - b.teamNumber)
+      .map((row, index) => ({ ...row, rank: row.revenue || row.sales ? index + 1 : null })),
     prices: run.revealPrices
       ? await prisma.activeDecision.findMany({
           where: { gameRunId: run.id },
@@ -44,4 +49,24 @@ export async function GET() {
         })
       : []
   });
+}
+
+function summarizeThroughDraw(eventsJson: string, currentDrawOrder: number) {
+  const events = (JSON.parse(eventsJson) as SimulationEvent[]).filter((event) => event.drawOrder <= currentDrawOrder);
+  return events.reduce(
+    (summary, event) => {
+      if (!event.accepted) {
+        summary.events.push(event);
+        return summary;
+      }
+      summary.sales += 1;
+      summary.revenue += event.revenueAdded;
+      summary.capacityUsed = event.capacityUsedAfter;
+      if (event.segment === "LOW") summary.lowSales += 1;
+      if (event.segment === "HIGH") summary.highSales += 1;
+      summary.events.push(event);
+      return summary;
+    },
+    { sales: 0, lowSales: 0, highSales: 0, revenue: 0, capacityUsed: 0, events: [] as SimulationEvent[] }
+  );
 }

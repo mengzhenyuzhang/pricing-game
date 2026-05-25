@@ -24,6 +24,7 @@ export function LobbyClient({ displayName, attendanceMode, sessionName }: { disp
         <h1 className="mt-3 text-4xl font-black">You are checked in</h1>
         <p className="mt-4 text-2xl font-bold">{displayName}</p>
         <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{attendanceMode === "ONLINE" ? "Online" : "In person"}</p>
+        <p className="mt-2 text-sm text-slate-500">Testing as another student? Use a separate browser profile/incognito window, or <a className="font-bold text-coral underline" href="/api/logout">switch student</a>.</p>
         <p className="mt-6 rounded-md bg-mint p-4 text-lg font-semibold">{status}</p>
         <div className="mx-auto mt-6 h-3 w-48 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-1/2 animate-pulse rounded-full bg-coral" /></div>
       </section>

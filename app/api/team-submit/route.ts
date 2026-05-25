@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   if (!participant?.teamId) return NextResponse.json({ error: "You are not assigned to a team yet." }, { status: 403 });
   const ip = request.headers.get("x-forwarded-for") ?? participant.id;
   if (!checkRateLimit(`team-submit:${ip}`, 20)) return NextResponse.json({ error: "Please wait before submitting again." }, { status: 429 });
-  const playable = await getPlayableRun();
+  const playable = await getPlayableRun(participant.classSessionId);
   if (!playable || playable.run.classSessionId !== participant.classSessionId) return NextResponse.json({ error: "No round is open." }, { status: 400 });
   if (playable.period?.deadline && playable.period.deadline.getTime() < Date.now()) return NextResponse.json({ error: "The deadline has passed." }, { status: 400 });
   const parsed = teamDecisionSchema.safeParse(await request.json());
