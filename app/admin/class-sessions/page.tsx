@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClassSession } from "@/lib/admin-actions";
+import { createClassSession, deleteClassSession } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -42,8 +42,8 @@ export default async function ClassSessionsPage({ searchParams }: { searchParams
       </section>
       <section className="panel overflow-x-auto">
         <table className="w-full min-w-[860px]">
-          <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Session</th><th className="p-3">Code</th><th className="p-3">Status</th><th className="p-3">Expected</th><th className="p-3">Team size</th><th className="p-3">Teams</th><th className="p-3">Checked in</th><th className="p-3"></th></tr></thead>
-          <tbody>{sessions.map((session) => <tr key={session.id} className="border-t"><td className="p-3 font-bold">{session.name}</td><td className="p-3 font-mono">{session.code}</td><td className="p-3">{session.status}</td><td className="p-3">{session.expectedStudentCount ?? "-"}</td><td className="p-3">{session.minTeamSize}-{session.maxTeamSize}</td><td className="p-3">{session._count.teams}</td><td className="p-3">{session._count.participants}</td><td className="p-3"><Link className="btn-secondary" href={`/admin/class-sessions/${session.id}`}>Open</Link></td></tr>)}</tbody>
+          <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Session</th><th className="p-3">Code</th><th className="p-3">Status</th><th className="p-3">Expected</th><th className="p-3">Team size</th><th className="p-3">Teams</th><th className="p-3">Checked in</th><th className="p-3">Actions</th></tr></thead>
+          <tbody>{sessions.map((session) => <tr key={session.id} className="border-t align-top"><td className="p-3 font-bold">{session.name}</td><td className="p-3 font-mono">{session.code}</td><td className="p-3">{session.status}</td><td className="p-3">{session.expectedStudentCount ?? "-"}</td><td className="p-3">{session.minTeamSize}-{session.maxTeamSize}</td><td className="p-3">{session._count.teams}</td><td className="p-3">{session._count.participants}</td><td className="space-y-2 p-3"><Link className="btn-secondary inline-flex" href={`/admin/class-sessions/${session.id}`}>Open</Link><form action={deleteClassSession} className="flex flex-wrap items-center gap-2"><input type="hidden" name="classSessionId" value={session.id} /><input className="input max-w-28 py-2 text-sm" name="confirm" placeholder="DELETE" /><button className="btn-secondary border-red-300 text-red-700">Delete all</button></form></td></tr>)}</tbody>
         </table>
       </section>
     </div>

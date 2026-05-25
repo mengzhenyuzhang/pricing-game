@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createCustomRun, createPresetRun } from "@/lib/admin-actions";
+import { createCustomRun, createPresetRun, deleteRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
 import { computeSegmentCutoffForClassSession, getCurrentClassSession } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 
 export const dynamic = "force-dynamic";
 
-export default async function RunsPage({ searchParams }: { searchParams: { classSessionId?: string } }) {
+export default async function RunsPage({ searchParams }: { searchParams: { classSessionId?: string; message?: string } }) {
   await requireAdmin();
   const sessions = await prisma.classSession.findMany({ orderBy: { updatedAt: "desc" } });
   const current = searchParams.classSessionId
@@ -47,6 +47,7 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
   return (
     <div className="space-y-5">
       <h1 className="text-4xl font-black">Game Runs</h1>
+      {searchParams.message ? <p className="rounded-md bg-mint p-3 font-semibold text-slate-900">{searchParams.message}</p> : null}
       <form className="panel flex flex-wrap items-end gap-3 p-4">
         <label><span className="label">Class session</span><select className="input mt-1" name="classSessionId" defaultValue={current.id}>{sessions.map((session) => <option key={session.id} value={session.id}>{session.name}</option>)}</select></label>
         <button className="btn-secondary">View</button>
@@ -86,8 +87,8 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
       </form>
       <section className="panel overflow-x-auto">
         <table className="w-full min-w-[760px]">
-          <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Run</th><th className="p-3">Type</th><th className="p-3">Status</th><th className="p-3">Capacity</th><th className="p-3">Day limit</th><th className="p-3"></th></tr></thead>
-          <tbody>{runs.map((run) => <tr key={run.id} className="border-t"><td className="p-3 font-bold">{run.name}</td><td className="p-3">{run.type}</td><td className="p-3"><StatusBadge status={run.status} /></td><td className="p-3">{run.capacity}</td><td className="p-3">{defaultDrawCount(valuationCount, run.drawPercent)}</td><td className="p-3"><Link className="btn-secondary" href={`/admin/run/${run.id}`}>Control</Link></td></tr>)}</tbody>
+          <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Run</th><th className="p-3">Type</th><th className="p-3">Status</th><th className="p-3">Capacity</th><th className="p-3">Day limit</th><th className="p-3">Actions</th></tr></thead>
+          <tbody>{runs.map((run) => <tr key={run.id} className="border-t align-top"><td className="p-3 font-bold">{run.name}</td><td className="p-3">{run.type}</td><td className="p-3"><StatusBadge status={run.status} /></td><td className="p-3">{run.capacity}</td><td className="p-3">{defaultDrawCount(valuationCount, run.drawPercent)}</td><td className="space-y-2 p-3"><Link className="btn-secondary inline-flex" href={`/admin/run/${run.id}`}>Control</Link><form action={deleteRun} className="flex flex-wrap items-center gap-2"><input type="hidden" name="runId" value={run.id} /><input className="input max-w-28 py-2 text-sm" name="confirm" placeholder="DELETE" /><button className="btn-secondary border-red-300 text-red-700">Delete run</button></form></td></tr>)}</tbody>
         </table>
       </section>
     </div>

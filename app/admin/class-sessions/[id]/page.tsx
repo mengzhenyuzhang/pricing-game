@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { closeCheckIn, openCheckIn, removeParticipant } from "@/lib/admin-actions";
+import { closeCheckIn, deleteClassSession, openCheckIn, removeParticipant } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -40,6 +40,15 @@ export default async function ClassSessionDashboard({ params }: { params: { id: 
         <Link className="btn-secondary" href={`/admin/class-sessions/${session.id}/runs`}>Runs</Link>
         <Link className="btn-secondary" href={`/admin/class-sessions/${session.id}/participants`}>Participants</Link>
       </div>
+      <section className="panel border-red-200 p-5">
+        <h2 className="text-2xl font-black text-red-700">Danger Zone</h2>
+        <p className="mt-2 text-sm text-slate-700">Delete this class session and all related participants, teams, valuations, runs, submissions, decisions, draws, and results. Type DELETE to enable the action.</p>
+        <form action={deleteClassSession} className="mt-4 flex flex-wrap items-end gap-3">
+          <input type="hidden" name="classSessionId" value={session.id} />
+          <label><span className="label">Confirmation</span><input className="input mt-1" name="confirm" placeholder="DELETE" /></label>
+          <button className="btn-secondary border-red-300 text-red-700">Delete class session data</button>
+        </form>
+      </section>
       <section className="panel overflow-x-auto">
         <table className="w-full min-w-[900px]">
           <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Name</th><th className="p-3">Email</th><th className="p-3">Mode</th><th className="p-3">Valuation</th><th className="p-3">Checked in</th><th className="p-3">Team</th><th className="p-3"></th></tr></thead>

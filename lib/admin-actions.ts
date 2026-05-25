@@ -205,6 +205,35 @@ export async function createCustomRun(formData: FormData) {
   redirect(`/admin/run/${run.id}`);
 }
 
+export async function deleteClassSession(formData: FormData) {
+  await requireAdmin();
+  const classSessionId = String(formData.get("classSessionId") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (confirm !== "DELETE") {
+    redirect(`/admin/class-sessions?warning=${encodeURIComponent("Type DELETE to confirm class-session deletion.")}`);
+  }
+  await prisma.classSession.delete({ where: { id: classSessionId } });
+  revalidatePath("/admin");
+  revalidatePath("/admin/class-sessions");
+  revalidatePath("/admin/runs");
+  redirect(`/admin/class-sessions?warning=${encodeURIComponent("Class session and all related data were deleted.")}`);
+}
+
+export async function deleteRun(formData: FormData) {
+  await requireAdmin();
+  const runId = String(formData.get("runId") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: runId }, select: { classSessionId: true, name: true } });
+  if (confirm !== "DELETE") {
+    redirect(`/admin/run/${runId}?message=${encodeURIComponent("Type DELETE to confirm run deletion.")}`);
+  }
+  await prisma.gameRun.delete({ where: { id: runId } });
+  revalidatePath(`/admin/class-sessions/${run.classSessionId}/runs`);
+  revalidatePath("/admin/runs");
+  revalidatePath("/scoreboard");
+  redirect(`/admin/runs?classSessionId=${run.classSessionId}&message=${encodeURIComponent(`${run.name} was deleted.`)}`);
+}
+
 export async function controlRun(formData: FormData) {
   await requireAdmin();
   const runId = String(formData.get("runId"));

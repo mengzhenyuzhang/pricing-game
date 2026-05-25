@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { deleteRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
 import { ensureMinimumDynamicPeriods, getRunDayLimit } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
@@ -149,6 +150,15 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
           <table className="w-full min-w-[860px]"><thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Rank</th><th className="p-3">Team</th><th className="p-3">Sales</th><th className="p-3">Revenue</th><th className="p-3">Used</th><th className="p-3">Remaining</th></tr></thead><tbody>{run.results.map((r) => <tr className="border-t" key={r.id}><td className="p-3 font-black">{r.rank}</td><td className="p-3 font-bold">{r.team.name}</td><td className="p-3">{r.sales}</td><td className="p-3">${r.revenue.toLocaleString()}</td><td className="p-3">{r.capacityUsed}</td><td className="p-3 font-bold">{Math.max(0, run.capacity - r.capacityUsed)}</td></tr>)}</tbody></table>
         </section>
       ) : null}
+      <section className="panel border-red-200 p-5">
+        <h2 className="text-2xl font-black text-red-700">Danger Zone</h2>
+        <p className="mt-2 text-sm text-slate-700">Delete this run and all related periods, arrivals, submissions, decisions, and results. Other runs and class-session participants are not deleted.</p>
+        <form action={deleteRun} className="mt-4 flex flex-wrap items-end gap-3">
+          <input type="hidden" name="runId" value={run.id} />
+          <label><span className="label">Confirmation</span><input className="input mt-1" name="confirm" placeholder="DELETE" /></label>
+          <button className="btn-secondary border-red-300 text-red-700">Delete run data</button>
+        </form>
+      </section>
     </div>
   );
 }
