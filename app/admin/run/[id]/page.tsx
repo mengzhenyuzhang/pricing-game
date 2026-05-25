@@ -1,24 +1,16 @@
 import { notFound } from "next/navigation";
-import { controlRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
 import { ensureMinimumDynamicPeriods, getRunDayLimit } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { runStateSignature } from "@/lib/run-state";
 import { StatusBadge } from "@/components/StatusBadge";
-import { PendingButton } from "@/components/PendingButton";
+import { RunControlButton } from "./run-control-button";
 import { RunAutoRefresh } from "./run-auto-refresh";
 
 export const dynamic = "force-dynamic";
 
 function ControlButton({ runId, action, periodId, label, disabled = false, pendingText }: { runId: string; action: string; periodId?: string; label?: string; disabled?: boolean; pendingText?: string }) {
-  return (
-    <form action={controlRun}>
-      <input type="hidden" name="runId" value={runId} />
-      <input type="hidden" name="action" value={action} />
-      {periodId ? <input type="hidden" name="periodId" value={periodId} /> : null}
-      <PendingButton disabled={disabled} pendingText={pendingText}>{label ?? action}</PendingButton>
-    </form>
-  );
+  return <RunControlButton runId={runId} action={action} periodId={periodId} label={label ?? action} disabled={disabled} pendingText={pendingText} />;
 }
 
 export default async function RunDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { message?: string } }) {
