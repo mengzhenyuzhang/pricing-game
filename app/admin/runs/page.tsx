@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createCustomRun, createPresetRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
-import { MINIMUM_GAME_DAYS, getCurrentClassSession } from "@/lib/game";
+import { MINIMUM_GAME_DAYS, computeSegmentCutoffForClassSession, getCurrentClassSession } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { defaultCapacity, defaultDrawCount } from "@/lib/team-generation";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -17,8 +17,33 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
   const valuationCount = await prisma.participant.count({ where: { classSessionId: current.id } });
   const runs = await prisma.gameRun.findMany({ where: { classSessionId: current.id }, orderBy: { createdAt: "desc" } });
   const staticCapacity = defaultCapacity("STATIC", valuationCount);
+  const dynamicCapacity = defaultCapacity("DYNAMIC", valuationCount);
   const postCapacity = defaultCapacity("POSTSCREENING", valuationCount);
   const drawCount = defaultDrawCount(valuationCount, current.targetDrawPercent);
+  const presetCutoffPercent = 0.5;
+  const presetSegmentCutoff = await computeSegmentCutoffForClassSession(current.id, presetCutoffPercent);
+  const presetCards = [
+    {
+      preset: "static1",
+      label: "Static Round 1",
+      details: [`Capacity ${staticCapacity}`, `Draw percent ${formatPercent(current.targetDrawPercent)}`, `Default draw ${drawCount}`]
+    },
+    {
+      preset: "static2",
+      label: "Static Round 2",
+      details: [`Capacity ${staticCapacity}`, `Draw percent ${formatPercent(current.targetDrawPercent)}`, `Default draw ${drawCount}`]
+    },
+    {
+      preset: "dynamic",
+      label: "Dynamic Pricing Game",
+      details: [`Capacity ${dynamicCapacity}`, `${MINIMUM_GAME_DAYS} pricing days`, `Draw percent ${formatPercent(current.targetDrawPercent)}`, `Default draw ${drawCount}`]
+    },
+    {
+      preset: "post",
+      label: "Postscreening Game",
+      details: [`Capacity ${postCapacity}`, `${MINIMUM_GAME_DAYS} pricing days`, `Cutoff ${formatPercent(presetCutoffPercent)} = ${formatMoney(presetSegmentCutoff)}`, `Draw percent ${formatPercent(current.targetDrawPercent)}`]
+    }
+  ];
   return (
     <div className="space-y-5">
       <h1 className="text-4xl font-black">Game Runs</h1>
@@ -29,9 +54,19 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
       </form>
       <section className="panel p-5">
         <h2 className="text-2xl font-black">Presets</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {[["static1", "Static Round 1"], ["static2", "Static Round 2"], ["dynamic", "Dynamic Pricing Game"], ["post", "Postscreening Game"]].map(([preset, label]) => (
-            <form key={preset} action={createPresetRun}><input type="hidden" name="classSessionId" value={current.id} /><input type="hidden" name="preset" value={preset} />{preset === "dynamic" || preset === "post" ? <input type="hidden" name="dynamicPeriods" value="10" /> : null}{preset === "post" ? <input type="hidden" name="segmentCutoffPercent" value="0.5" /> : null}<button className="btn-primary">{label}</button></form>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {presetCards.map(({ preset, label, details }) => (
+            <form className="rounded-md border border-slate-200 p-4" key={preset} action={createPresetRun}>
+              <input type="hidden" name="classSessionId" value={current.id} />
+              <input type="hidden" name="preset" value={preset} />
+              {preset === "dynamic" || preset === "post" ? <input type="hidden" name="dynamicPeriods" value="10" /> : null}
+              {preset === "post" ? <input type="hidden" name="segmentCutoffPercent" value="0.5" /> : null}
+              <h3 className="text-lg font-black">{label}</h3>
+              <ul className="mt-3 space-y-1 text-sm text-slate-600">
+                {details.map((detail) => <li key={detail}>{detail}</li>)}
+              </ul>
+              <button className="btn-primary mt-4 w-full">Create</button>
+            </form>
           ))}
         </div>
       </section>
@@ -57,4 +92,12 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
       </section>
     </div>
   );
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatMoney(value: number) {
+  return `$${value.toLocaleString()}`;
 }
