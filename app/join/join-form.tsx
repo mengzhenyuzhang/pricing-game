@@ -11,15 +11,20 @@ export function JoinForm({ code, sessionName }: { code: string; sessionName: str
   async function submit(formData: FormData) {
     setBusy(true);
     setMessage(null);
-    const response = await fetch("/api/check-in", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...Object.fromEntries(formData), classSessionCode: code })
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) setMessage(data.error);
-    else router.replace(data.redirectTo);
+    try {
+      const response = await fetch("/api/check-in", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...Object.fromEntries(formData), classSessionCode: code })
+      });
+      const data = await response.json();
+      if (!response.ok) setMessage(data.error ?? "Check-in failed.");
+      else router.replace(data.redirectTo);
+    } catch {
+      setMessage("Check-in failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

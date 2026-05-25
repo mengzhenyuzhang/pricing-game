@@ -8,10 +8,15 @@ export function LobbyClient({ displayName, attendanceMode, sessionName }: { disp
   const [status, setStatus] = useState("Waiting for instructor to assign teams");
   useEffect(() => {
     const poll = async () => {
-      const response = await fetch("/api/me", { cache: "no-store" });
-      const data = await response.json();
-      if (data.redirectTo === "/team") router.replace("/team");
-      else setStatus("Waiting for instructor to assign teams");
+      try {
+        const response = await fetch("/api/me", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.redirectTo === "/team") router.replace("/team");
+        else setStatus("Waiting for instructor to assign teams");
+      } catch {
+        setStatus("Still checked in. Reconnecting to the classroom session...");
+      }
     };
     poll();
     const id = setInterval(poll, 2500);

@@ -9,14 +9,19 @@ export function TeamDecisionForm({ runType }: { runType: string }) {
   async function submit(formData: FormData) {
     setBusy(true);
     setMessage(null);
-    const response = await fetch("/api/team-submit", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(Object.fromEntries(formData))
-    });
-    const data = await response.json();
-    setBusy(false);
-    setMessage(response.ok ? `Submission received at ${new Date(data.submittedAt).toLocaleTimeString()}.` : data.error);
+    try {
+      const response = await fetch("/api/team-submit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(formData))
+      });
+      const data = await response.json();
+      setMessage(response.ok ? `Submission received at ${new Date(data.submittedAt).toLocaleTimeString()}.` : data.error ?? "Submission failed.");
+    } catch {
+      setMessage("Submission failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

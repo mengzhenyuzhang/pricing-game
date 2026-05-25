@@ -125,7 +125,7 @@ function formatMoney(value?: number | null) {
 }
 
 function buildDailyRows(currentDay: number, eventsJson: string) {
-  const events = JSON.parse(eventsJson) as SimulationEvent[];
+  const events = safeEvents(eventsJson);
   const eventByDay = new Map(events.map((event) => [event.drawOrder, event]));
   let cumulativeRevenue = 0;
   return Array.from({ length: currentDay }, (_, index) => {
@@ -143,6 +143,15 @@ function buildDailyRows(currentDay: number, eventsJson: string) {
       cumulativeRevenue
     };
   });
+}
+
+function safeEvents(eventsJson: string) {
+  try {
+    const parsed = JSON.parse(eventsJson);
+    return Array.isArray(parsed) ? parsed as SimulationEvent[] : [];
+  } catch {
+    return [];
+  }
 }
 
 function teamPageSignature(runId: string | null, periodId: string | null, runStatus: string | null, periodStatus: string | null, resultsRunId: string | null, currentDrawOrder: number) {

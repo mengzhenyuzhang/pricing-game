@@ -47,12 +47,22 @@ type RunScoreboard = {
 export function ScoreboardClient() {
   const [data, setData] = useState<{ run: RunInfo | null; results: Row[]; prices: PriceRow[]; valuationHistogram: HistogramBucket[]; runs: RunScoreboard[] }>({ run: null, results: [], prices: [], valuationHistogram: [], runs: [] });
   const [large, setLarge] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const response = await fetch("/api/scoreboard", { cache: "no-store" });
-      if (active) setData(await response.json());
+      try {
+        const response = await fetch("/api/scoreboard", { cache: "no-store" });
+        if (!response.ok) throw new Error("Scoreboard is temporarily unavailable.");
+        const payload = await response.json();
+        if (active) {
+          setData(normalizeScoreboardPayload(payload));
+          setError(null);
+        }
+      } catch (loadError) {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Scoreboard is temporarily unavailable.");
+      }
     };
     load();
     const id = setInterval(load, 5000);
@@ -66,6 +76,7 @@ export function ScoreboardClient() {
   const runs = data.runs.length ? data.runs : [{ run: data.run, results: data.results, prices: data.prices, valuationHistogram: data.valuationHistogram }];
   return (
     <div className={large ? "space-y-5 text-xl" : "space-y-5"}>
+      {error ? <div className="rounded-md bg-red-50 p-3 font-semibold text-red-700">{error}</div> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-4xl font-black">Scoreboard</h1>
@@ -80,7 +91,7 @@ export function ScoreboardClient() {
 
 function RunPanel({ data }: { data: RunScoreboard }) {
   const chartData = useMemo(() => data.results.map((row) => ({ team: `T${row.teamNumber}`, revenue: row.revenue })), [data.results]);
-  const pricesByTeam = useMemo(() => new Map(data.prices.map((price) => [price.team.teamNumber, price])), [data.prices]);
+  const pricesByTeam = useMemo(() => new Map(data.prices.filter((price) => price.team).map((price) => [price.team.teamNumber, price])), [data.prices]);
   const run = data.run;
 
   return (
@@ -158,4 +169,21 @@ function RunPanel({ data }: { data: RunScoreboard }) {
       </div>
     </section>
   );
+}
+
+function normalizeScoreboardPayload(payload: Partial<{ run: RunInfo | null; results: Row[]; prices: PriceRow[]; valuationHistogram: HistogramBucket[]; runs: RunScoreboard[] }>) {
+  return {
+    run: payload.run ?? null,
+    results: Array.isArray(payload.results) ? payload.results : [],
+    prices: Array.isArray(payload.prices) ? payload.prices : [],
+    valuationHistogram: Array.isArray(payload.valuationHistogram) ? payload.valuationHistogram : [],
+    runs: Array.isArray(payload.runs)
+      ? payload.runs.map((runData) => ({
+          run: runData.run,
+          results: Array.isArray(runData.results) ? runData.results : [],
+          prices: Array.isArray(runData.prices) ? runData.prices : [],
+          valuationHistogram: Array.isArray(runData.valuationHistogram) ? runData.valuationHistogram : []
+        }))
+      : []
+  };
 }

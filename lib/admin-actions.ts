@@ -254,20 +254,36 @@ export async function controlRun(formData: FormData) {
     message = "Run ended. Scoreboard and arrival valuation histogram are now revealed.";
   }
   if (action === "nextDayNoArrival") {
-    const result = await addDayToRun(runId, "NO_ARRIVAL");
-    message = `Day ${result.day}: no arrival.`;
+    try {
+      const result = await addDayToRun(runId, "NO_ARRIVAL");
+      message = `Day ${result.day}: no arrival.`;
+    } catch (error) {
+      message = `Could not proceed to the next day: ${errorMessage(error)}`;
+    }
   }
   if (action === "nextDayRandomArrival") {
-    const result = await addDayToRun(runId, "RANDOM");
-    message = `Day ${result.day}: random arrival drawn.`;
+    try {
+      const result = await addDayToRun(runId, "RANDOM");
+      message = `Day ${result.day}: random arrival drawn.`;
+    } catch (error) {
+      message = `Could not draw a random arrival: ${errorMessage(error)}`;
+    }
   }
   if (action === "nextDayLowArrival") {
-    const result = await addDayToRun(runId, "LOW");
-    message = `Day ${result.day}: below-cutoff arrival drawn.`;
+    try {
+      const result = await addDayToRun(runId, "LOW");
+      message = `Day ${result.day}: below-cutoff arrival drawn.`;
+    } catch (error) {
+      message = `Could not draw a below-cutoff arrival: ${errorMessage(error)}`;
+    }
   }
   if (action === "nextDayHighArrival") {
-    const result = await addDayToRun(runId, "HIGH");
-    message = `Day ${result.day}: above-cutoff arrival drawn.`;
+    try {
+      const result = await addDayToRun(runId, "HIGH");
+      message = `Day ${result.day}: above-cutoff arrival drawn.`;
+    } catch (error) {
+      message = `Could not draw an above-cutoff arrival: ${errorMessage(error)}`;
+    }
   }
   if (action === "reset") {
     await prisma.teamResult.deleteMany({ where: { gameRunId: runId } });
@@ -281,6 +297,10 @@ export async function controlRun(formData: FormData) {
   revalidatePath(`/admin/run/${runId}`);
   revalidatePath("/scoreboard");
   redirect(`/admin/run/${runId}?message=${encodeURIComponent(message)}`);
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unexpected error.";
 }
 
 function shortCode() {
