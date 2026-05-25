@@ -84,7 +84,16 @@ export async function performRunControl(runId: string, action: string, periodId?
     message = "Run reset.";
   }
 
-  revalidatePath(`/admin/run/${runId}`);
-  revalidatePath("/scoreboard");
+  safeRevalidate(`/admin/run/${runId}`);
+  safeRevalidate("/scoreboard");
   return message;
+}
+
+function safeRevalidate(path: string) {
+  try {
+    revalidatePath(path);
+  } catch {
+    // The run-control route redirects or reloads after each action, so a failed
+    // cache revalidation must not turn a successful classroom click into an error.
+  }
 }
