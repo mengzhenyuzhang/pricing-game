@@ -16,11 +16,11 @@ export async function GET() {
   const valuationHistogram = run.revealValuationHistogram
     ? buildHistogram(
         (
-          await prisma.participant.findMany({
-            where: { classSessionId: run.classSessionId },
-            select: { valuationAmount: true }
+          await prisma.customerDraw.findMany({
+            where: { gameRunId: run.id, useInRun: true, drawOrder: { lte: run.currentDrawOrder } },
+            select: { valuationAmountSnapshot: true }
           })
-        ).map((participant) => participant.valuationAmount)
+        ).map((draw) => draw.valuationAmountSnapshot)
       )
     : [];
   const resultByTeam = new Map(run.results.map((result) => [result.teamId, result]));

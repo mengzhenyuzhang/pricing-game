@@ -69,9 +69,8 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
         <div className="mt-4 flex flex-wrap gap-2">
           <ControlButton runId={run.id} action="open" label={usesDailyPricing ? "Open day 1 pricing" : "Open submissions"} pendingText="Opening..." disabled={run.status !== "DRAFT" && run.status !== "LOCKED"} />
           {!usesDailyPricing ? <ControlButton runId={run.id} action="simulate" label="Start day-by-day simulation" pendingText="Starting..." disabled={run.status !== "OPEN" || run.decisions.length === 0 || missing.length > 0} /> : null}
-          <ControlButton runId={run.id} action="reveal" label="Reveal scoreboard" pendingText="Revealing..." disabled={run.status !== "SIMULATED" && run.status !== "REVEALED"} />
+          <ControlButton runId={run.id} action="endRun" label="End run and reveal" pendingText="Ending run..." disabled={run.status === "DRAFT" || run.status === "REVEALED"} />
           <ControlButton runId={run.id} action="revealPrices" label="Reveal team prices" pendingText="Revealing prices..." disabled={run.revealPrices} />
-          <ControlButton runId={run.id} action="revealHistogram" label="Reveal valuation histogram" pendingText="Revealing histogram..." />
           <ControlButton runId={run.id} action="reset" label="Reset run" pendingText="Resetting..." />
         </div>
         <p className="mt-3 text-sm text-slate-600">{usesDailyPricing ? "Open day 1 pricing once. After each day, the next pricing day opens automatically." : "Open submissions once. After all teams submit, start the day-by-day simulation, then proceed through arrivals."}</p>

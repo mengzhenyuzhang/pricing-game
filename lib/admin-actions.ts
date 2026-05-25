@@ -242,6 +242,17 @@ export async function controlRun(formData: FormData) {
     await prisma.gameRun.update({ where: { id: runId }, data: { revealValuationHistogram: true } });
     message = "Valuation histogram revealed.";
   }
+  if (action === "endRun") {
+    await prisma.gameRun.update({
+      where: { id: runId },
+      data: {
+        status: "REVEALED",
+        revealValuationHistogram: true
+      }
+    });
+    await prisma.roundPeriod.updateMany({ where: { gameRunId: runId, status: "OPEN" }, data: { status: "REVEALED" } });
+    message = "Run ended. Scoreboard and arrival valuation histogram are now revealed.";
+  }
   if (action === "nextDayNoArrival") {
     const result = await addDayToRun(runId, "NO_ARRIVAL");
     message = `Day ${result.day}: no arrival.`;

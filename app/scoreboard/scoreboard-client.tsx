@@ -75,7 +75,7 @@ export function ScoreboardClient() {
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
               <h2 className="text-2xl font-black">Valuation Histogram</h2>
-              <p className="text-sm font-semibold text-slate-600">Revealed by instructor. Shows checked-in student valuations in $1,000 buckets.</p>
+              <p className="text-sm font-semibold text-slate-600">Revealed by instructor. Shows arrival customer valuations in $1,000 buckets.</p>
             </div>
           </div>
           <div className="h-72">
