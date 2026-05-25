@@ -3,8 +3,10 @@ import { controlRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
 import { ensureMinimumDynamicPeriods, getRunDayLimit } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
+import { runStateSignature } from "@/lib/run-state";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PendingButton } from "@/components/PendingButton";
+import { RunAutoRefresh } from "./run-auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -56,8 +58,10 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
   );
   const missingCurrentDay = teams.filter((team) => !currentPeriodDecisionTeamIds.has(team.id));
   const drawByDay = new Map(run.draws.map((draw) => [draw.drawOrder, draw]));
+  const stateSignature = await runStateSignature(run.id);
   return (
     <div className="space-y-5">
+      <RunAutoRefresh runId={run.id} initialSignature={stateSignature} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-4xl font-black">{run.name}</h1><div className="mt-2 flex gap-2"><StatusBadge status={run.status} /><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">{run.type}</span></div></div>
         <a className="btn-secondary" href={`/api/admin/export/results?runId=${run.id}`}>Export results CSV</a>
