@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { publicEventJson } from "@/lib/game";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const run = await prisma.gameRun.findFirst({
     where: { status: { in: ["SIMULATED", "REVEALED"] } },
