@@ -4,13 +4,21 @@ import { ensureMinimumDynamicPeriods, getRunDayLimit } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { runStateSignature } from "@/lib/run-state";
 import { StatusBadge } from "@/components/StatusBadge";
-import { RunControlButton } from "./run-control-button";
 import { RunAutoRefresh } from "./run-auto-refresh";
 
 export const dynamic = "force-dynamic";
 
 function ControlButton({ runId, action, periodId, label, disabled = false, pendingText }: { runId: string; action: string; periodId?: string; label?: string; disabled?: boolean; pendingText?: string }) {
-  return <RunControlButton runId={runId} action={action} periodId={periodId} label={label ?? action} disabled={disabled} pendingText={pendingText} />;
+  return (
+    <form action="/api/admin/run-control" method="post">
+      <input type="hidden" name="runId" value={runId} />
+      <input type="hidden" name="action" value={action} />
+      {periodId ? <input type="hidden" name="periodId" value={periodId} /> : null}
+      <button className="btn-secondary disabled:cursor-not-allowed disabled:opacity-40" disabled={disabled} type="submit">
+        {label ?? pendingText ?? action}
+      </button>
+    </form>
+  );
 }
 
 export default async function RunDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { message?: string } }) {
