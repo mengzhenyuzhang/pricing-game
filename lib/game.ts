@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { drawPoolForMode } from "@/lib/draw-pool";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_SEGMENT_CUTOFF_PERCENT, quantileCutoff } from "@/lib/segments";
 import { simulateDynamic, simulatePostscreening, simulateStatic } from "@/lib/simulation";
@@ -196,23 +197,8 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
   const alreadyDrawn = await prisma.customerDraw.findMany({ where: { gameRunId, participantId: { not: null } }, select: { participantId: true } });
   const usedIds = alreadyDrawn.map((draw) => draw.participantId!).filter(Boolean);
   const cutoff = await getRunSegmentCutoff(run.id, run.classSessionId, run.segmentCutoff, run.segmentCutoffPercent);
-  const participants = await prisma.participant.findMany({
-    where: {
-      classSessionId: run.classSessionId,
-      id: usedIds.length ? { notIn: usedIds } : undefined,
-      ...(run.type === "POSTSCREENING" && mode === "LOW" ? { valuationAmount: { lt: cutoff } } : {}),
-      ...(run.type === "POSTSCREENING" && mode === "HIGH" ? { valuationAmount: { gte: cutoff } } : {})
-    }
-  });
-  const pool = participants.length
-    ? participants
-    : await prisma.participant.findMany({
-        where: {
-          classSessionId: run.classSessionId,
-          ...(run.type === "POSTSCREENING" && mode === "LOW" ? { valuationAmount: { lt: cutoff } } : {}),
-          ...(run.type === "POSTSCREENING" && mode === "HIGH" ? { valuationAmount: { gte: cutoff } } : {})
-        }
-      });
+  const participants = await prisma.participant.findMany({ where: { classSessionId: run.classSessionId } });
+  const pool = drawPoolForMode(participants, usedIds, cutoff, mode, run.type === "POSTSCREENING");
   if (!pool.length) throw new Error("No matching checked-in participants are available to draw.");
   const participant = pool[Math.floor(Math.random() * pool.length)];
   const segment = run.type === "POSTSCREENING" ? segmentFor(run.type, participant.valuationAmount, cutoff) : "UNKNOWN";

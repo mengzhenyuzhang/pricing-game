@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { quantileCutoff } from "../lib/segments";
 import { buildAdaptiveHistogram } from "../lib/histogram";
+import { drawPoolForMode } from "../lib/draw-pool";
 import { serializePublicScoreboard, simulateDynamic, simulatePostscreening, simulateStatic } from "../lib/simulation";
 import type { Decision, Draw } from "../lib/types";
 
@@ -24,6 +25,18 @@ describe("simulation logic", () => {
     expect(narrow.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(5);
     expect(wide.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(5);
     expect(narrow.map((bucket) => bucket.bucket)).not.toEqual(wide.map((bucket) => bucket.bucket));
+  });
+
+  it("keeps postscreening replacement draws inside the selected segment", () => {
+    const candidates = [
+      { id: "low-1", valuationAmount: 1000 },
+      { id: "low-2", valuationAmount: 1500 },
+      { id: "high-1", valuationAmount: 5000 }
+    ];
+    const lowPool = drawPoolForMode(candidates, ["low-1", "low-2"], 3000, "LOW", true);
+    const highPool = drawPoolForMode(candidates, ["high-1"], 3000, "HIGH", true);
+    expect(lowPool.map((candidate) => candidate.id).sort()).toEqual(["low-1", "low-2"]);
+    expect(highPool.map((candidate) => candidate.id)).toEqual(["high-1"]);
   });
 
   it("simulates static pricing", () => {
