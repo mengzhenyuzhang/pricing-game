@@ -74,7 +74,7 @@ async function serializeRun(run: Awaited<ReturnType<typeof prisma.gameRun.findMa
 }
 
 function summarizeThroughDraw(eventsJson: string, currentDrawOrder: number) {
-  const events = (JSON.parse(eventsJson) as SimulationEvent[]).filter((event) => event.drawOrder <= currentDrawOrder);
+  const events = safeEvents(eventsJson).filter((event) => event.drawOrder <= currentDrawOrder);
   return events.reduce(
     (summary, event) => {
       if (!event.accepted) {
@@ -91,4 +91,13 @@ function summarizeThroughDraw(eventsJson: string, currentDrawOrder: number) {
     },
     { sales: 0, lowSales: 0, highSales: 0, revenue: 0, capacityUsed: 0, events: [] as SimulationEvent[] }
   );
+}
+
+function safeEvents(eventsJson: string) {
+  try {
+    const parsed = JSON.parse(eventsJson);
+    return Array.isArray(parsed) ? parsed as SimulationEvent[] : [];
+  } catch {
+    return [];
+  }
 }

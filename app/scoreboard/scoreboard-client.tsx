@@ -19,7 +19,7 @@ type PriceRow = {
   lowPriceUsed: number | null;
   highPriceUsed: number | null;
   bookingLimitUsed: number | null;
-  team: { teamNumber: number };
+  team: { teamNumber: number } | null;
 };
 
 type HistogramBucket = {
@@ -73,7 +73,8 @@ export function ScoreboardClient() {
   }, []);
 
   if (!data.run) return <div className="panel p-8 text-center text-2xl font-bold">No simulated scoreboard is available yet.</div>;
-  const runs = data.runs.length ? data.runs : [{ run: data.run, results: data.results, prices: data.prices, valuationHistogram: data.valuationHistogram }];
+  const runs = (data.runs.length ? data.runs : [{ run: data.run, results: data.results, prices: data.prices, valuationHistogram: data.valuationHistogram }])
+    .filter((runData): runData is RunScoreboard => Boolean(runData.run));
   return (
     <div className={large ? "space-y-5 text-xl" : "space-y-5"}>
       {error ? <div className="rounded-md bg-red-50 p-3 font-semibold text-red-700">{error}</div> : null}
@@ -91,7 +92,10 @@ export function ScoreboardClient() {
 
 function RunPanel({ data }: { data: RunScoreboard }) {
   const chartData = useMemo(() => data.results.map((row) => ({ team: `T${row.teamNumber}`, revenue: row.revenue })), [data.results]);
-  const pricesByTeam = useMemo(() => new Map(data.prices.filter((price) => price.team).map((price) => [price.team.teamNumber, price])), [data.prices]);
+  const pricesByTeam = useMemo(() => {
+    const entries = data.prices.flatMap((price) => price.team ? [[price.team.teamNumber, price] as const] : []);
+    return new Map(entries);
+  }, [data.prices]);
   const run = data.run;
 
   return (
@@ -173,17 +177,68 @@ function RunPanel({ data }: { data: RunScoreboard }) {
 
 function normalizeScoreboardPayload(payload: Partial<{ run: RunInfo | null; results: Row[]; prices: PriceRow[]; valuationHistogram: HistogramBucket[]; runs: RunScoreboard[] }>) {
   return {
-    run: payload.run ?? null,
-    results: Array.isArray(payload.results) ? payload.results : [],
-    prices: Array.isArray(payload.prices) ? payload.prices : [],
-    valuationHistogram: Array.isArray(payload.valuationHistogram) ? payload.valuationHistogram : [],
+    run: normalizeRun(payload.run),
+    results: normalizeRows(payload.results),
+    prices: normalizePrices(payload.prices),
+    valuationHistogram: normalizeHistogram(payload.valuationHistogram),
     runs: Array.isArray(payload.runs)
       ? payload.runs.map((runData) => ({
-          run: runData.run,
-          results: Array.isArray(runData.results) ? runData.results : [],
-          prices: Array.isArray(runData.prices) ? runData.prices : [],
-          valuationHistogram: Array.isArray(runData.valuationHistogram) ? runData.valuationHistogram : []
-        }))
+          run: normalizeRun(runData.run),
+          results: normalizeRows(runData.results),
+          prices: normalizePrices(runData.prices),
+          valuationHistogram: normalizeHistogram(runData.valuationHistogram)
+        })).filter((runData): runData is RunScoreboard => Boolean(runData.run))
       : []
   };
+}
+
+function normalizeRun(run: RunInfo | null | undefined) {
+  if (!run?.id) return null;
+  return {
+    id: String(run.id),
+    name: String(run.name ?? "Run"),
+    status: String(run.status ?? ""),
+    type: String(run.type ?? ""),
+    revealPrices: Boolean(run.revealPrices),
+    revealValuationHistogram: Boolean(run.revealValuationHistogram),
+    currentDrawOrder: toNumber(run.currentDrawOrder)
+  };
+}
+
+function normalizeRows(rows: Row[] | undefined) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    rank: row.rank == null ? null : toNumber(row.rank),
+    teamName: String(row.teamName ?? "Team"),
+    teamNumber: toNumber(row.teamNumber),
+    sales: toNumber(row.sales),
+    lowSales: toNumber(row.lowSales),
+    highSales: toNumber(row.highSales),
+    revenue: toNumber(row.revenue),
+    capacityUsed: toNumber(row.capacityUsed)
+  }));
+}
+
+function normalizePrices(prices: PriceRow[] | undefined) {
+  if (!Array.isArray(prices)) return [];
+  return prices.map((price) => ({
+    priceUsed: price.priceUsed == null ? null : toNumber(price.priceUsed),
+    lowPriceUsed: price.lowPriceUsed == null ? null : toNumber(price.lowPriceUsed),
+    highPriceUsed: price.highPriceUsed == null ? null : toNumber(price.highPriceUsed),
+    bookingLimitUsed: price.bookingLimitUsed == null ? null : toNumber(price.bookingLimitUsed),
+    team: price.team ? { teamNumber: toNumber(price.team.teamNumber) } : null
+  }));
+}
+
+function normalizeHistogram(histogram: HistogramBucket[] | undefined) {
+  if (!Array.isArray(histogram)) return [];
+  return histogram.map((bucket) => ({
+    bucket: String(bucket.bucket ?? ""),
+    count: toNumber(bucket.count)
+  }));
+}
+
+function toNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
 }

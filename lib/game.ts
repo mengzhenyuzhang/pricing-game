@@ -308,8 +308,17 @@ export function csv(rows: Array<Record<string, unknown>>) {
 }
 
 export function publicEventJson(eventsJson: string) {
-  const events = JSON.parse(eventsJson) as Array<Record<string, unknown>>;
+  const events = safeEventArray(eventsJson);
   return JSON.stringify(events.map(({ valuationAmount: _valuationAmount, ...event }) => event));
+}
+
+function safeEventArray(eventsJson: string) {
+  try {
+    const parsed = JSON.parse(eventsJson);
+    return Array.isArray(parsed) ? parsed as Array<Record<string, unknown>> : [];
+  } catch {
+    return [];
+  }
 }
 
 export type Tx = Prisma.TransactionClient;
