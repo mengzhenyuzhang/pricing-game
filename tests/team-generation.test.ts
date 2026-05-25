@@ -55,7 +55,7 @@ describe("team generation", () => {
 
   it("bases run draw count on actual valuation count", () => {
     expect(defaultDrawCount(40, 0.7)).toBe(28);
-    expect(defaultDrawCount(3, 0.7)).toBe(2);
-    expect(defaultDrawCount(40, 0.7, 500)).toBe(40);
+    expect(defaultDrawCount(3, 0.7)).toBe(10);
+    expect(defaultDrawCount(40, 0.7, 500)).toBe(500);
   });
 });

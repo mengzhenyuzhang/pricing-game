@@ -442,7 +442,7 @@ function mixOrder(mix?: AttendanceMix) {
 export function defaultDrawCount(valuationCount: number, drawPercent: number, explicitDrawCount?: number | null) {
   if (valuationCount <= 0) return 0;
   const requested = explicitDrawCount && explicitDrawCount > 0 ? explicitDrawCount : Math.round(valuationCount * drawPercent);
-  return Math.max(1, Math.min(valuationCount, requested));
+  return Math.max(10, requested);
 }
 
 export function defaultCapacity(type: string, valuationCount: number) {
