@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSession, requireAdmin } from "@/lib/auth";
-import { addDayToRun, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
+import { MINIMUM_GAME_DAYS, addDayToRun, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { defaultCapacity, defaultDrawCount, generateAttendanceAwareTeamAssignments } from "@/lib/team-generation";
 import { classSessionSchema, loginSchema, manualValuationSchema, publishAssignmentSchema, runSchema, teamManualSchema } from "@/lib/validation";
@@ -158,7 +158,7 @@ export async function createPresetRun(formData: FormData) {
   const preset = String(formData.get("preset"));
   const type = preset === "dynamic" ? "DYNAMIC" : preset === "post" ? "POSTSCREENING" : "STATIC";
   const name = preset === "static2" ? "Static Round 2" : preset === "dynamic" ? "Dynamic Pricing Game" : preset === "post" ? "Postscreening Game" : "Static Round 1";
-  const dynamicPeriods = Number(formData.get("dynamicPeriods") || 5);
+  const dynamicPeriods = Math.max(Number(formData.get("dynamicPeriods") || MINIMUM_GAME_DAYS), MINIMUM_GAME_DAYS);
   const run = await prisma.gameRun.create({
     data: {
       classSessionId,

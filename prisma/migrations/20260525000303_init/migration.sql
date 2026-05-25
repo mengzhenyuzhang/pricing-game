@@ -34,7 +34,7 @@ CREATE TABLE "GameRun" (
     "capacity" INTEGER NOT NULL,
     "drawCount" INTEGER,
     "drawPercent" REAL NOT NULL DEFAULT 0.70,
-    "dynamicPeriods" INTEGER NOT NULL DEFAULT 5,
+    "dynamicPeriods" INTEGER NOT NULL DEFAULT 10,
     "segmentCutoff" INTEGER,
     "revealPrices" BOOLEAN NOT NULL DEFAULT false,
     "revealEventDetails" BOOLEAN NOT NULL DEFAULT false,

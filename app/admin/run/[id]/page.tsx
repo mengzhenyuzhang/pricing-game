@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { controlRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
+import { MINIMUM_GAME_DAYS } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PendingButton } from "@/components/PendingButton";
@@ -36,7 +37,8 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
   const missing = teams.filter((team) => !submittedTeamIds.has(team.id));
   const canProceedDay = run.status === "SIMULATED" || run.status === "REVEALED";
   const nextDay = run.type === "DYNAMIC" ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
-  const dynamicDone = run.type === "DYNAMIC" && nextDay > run.dynamicPeriods;
+  const dynamicDayCount = Math.max(run.dynamicPeriods, MINIMUM_GAME_DAYS);
+  const dynamicDone = run.type === "DYNAMIC" && nextDay > dynamicDayCount;
   const currentPeriodDecisionTeamIds = new Set(
     run.type === "DYNAMIC"
       ? run.decisions.filter((decision) => decision.period?.periodNumber === nextDay).map((decision) => decision.teamId)
@@ -67,6 +69,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
       <section className="panel p-5">
         <h2 className="text-2xl font-black">Proceed to Next Day</h2>
         <p className="mt-2 text-slate-700">Day {nextDay}: choose whether an arrival occurs. If there is an arrival, the app randomly draws one checked-in valuation and recomputes the scoreboard.</p>
+        {run.type === "DYNAMIC" ? <p className="mt-1 text-sm text-slate-600">This dynamic run can proceed through at least day {dynamicDayCount}.</p> : <p className="mt-1 text-sm text-slate-600">Static and postscreening runs can continue for 10 or more days.</p>}
         {run.type === "DYNAMIC" ? <p className="mt-2 rounded-md bg-mint p-3 text-sm font-semibold">Current dynamic pricing day: {nextDay}. Missing day-{nextDay} prices: {missingCurrentDay.length ? missingCurrentDay.map((team) => team.name).join(", ") : "none"}.</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <ControlButton runId={run.id} action="nextDayNoArrival" label={`Proceed to day ${nextDay}: no arrival`} pendingText="Proceeding..." disabled={(!canProceedDay && run.type !== "DYNAMIC") || dynamicDone} />
@@ -98,7 +101,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
         </section>
       ) : null}
       <section className="grid gap-4 md:grid-cols-4">
-        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Current day</p><p className="text-3xl font-black">{run.currentDrawOrder}</p><p className="text-sm text-slate-500">{run.draws.length} arrival day(s){run.type === "DYNAMIC" ? ` / ${run.dynamicPeriods} pricing days` : ""}</p></div>
+        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Current day</p><p className="text-3xl font-black">{run.currentDrawOrder}</p><p className="text-sm text-slate-500">{run.draws.length} arrival day(s){run.type === "DYNAMIC" ? ` / ${dynamicDayCount} pricing days` : ""}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Submitted teams</p><p className="text-3xl font-black">{submittedTeamIds.size}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Missing teams</p><p className="text-3xl font-black">{missing.length}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Results</p><p className="text-3xl font-black">{run.results.length}</p></div>

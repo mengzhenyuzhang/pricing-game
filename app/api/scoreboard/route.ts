@@ -13,6 +13,16 @@ export async function GET() {
   });
   if (!run) return NextResponse.json({ run: null, results: [] });
   const activeTeams = await prisma.team.findMany({ where: { classSessionId: run.classSessionId, active: true }, orderBy: { teamNumber: "asc" } });
+  const valuationHistogram = run.revealValuationHistogram
+    ? buildHistogram(
+        (
+          await prisma.participant.findMany({
+            where: { classSessionId: run.classSessionId },
+            select: { valuationAmount: true }
+          })
+        ).map((participant) => participant.valuationAmount)
+      )
+    : [];
   const resultByTeam = new Map(run.results.map((result) => [result.teamId, result]));
   return NextResponse.json({
     run: {
@@ -47,8 +57,23 @@ export async function GET() {
           orderBy: { team: { teamNumber: "asc" } },
           select: { priceUsed: true, lowPriceUsed: true, highPriceUsed: true, bookingLimitUsed: true, team: { select: { teamNumber: true } } }
         })
-      : []
+      : [],
+    valuationHistogram
   });
+}
+
+function buildHistogram(values: number[]) {
+  if (!values.length) return [];
+  const bucketSize = 1000;
+  const maxBucket = Math.max(9, Math.floor(Math.max(...values) / bucketSize));
+  const buckets = Array.from({ length: maxBucket + 1 }, (_, index) => ({
+    bucket: `$${(index * bucketSize).toLocaleString()}-${((index + 1) * bucketSize - 1).toLocaleString()}`,
+    count: 0
+  }));
+  for (const value of values) {
+    buckets[Math.min(maxBucket, Math.floor(value / bucketSize))].count += 1;
+  }
+  return buckets;
 }
 
 function summarizeThroughDraw(eventsJson: string, currentDrawOrder: number) {

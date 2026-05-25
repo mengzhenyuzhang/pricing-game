@@ -4,6 +4,8 @@ import { simulateDynamic, simulatePostscreening, simulateStatic } from "@/lib/si
 import { defaultDrawCount } from "@/lib/team-generation";
 import type { Decision, Draw, Segment, SimulationResult } from "@/lib/types";
 
+export const MINIMUM_GAME_DAYS = 10;
+
 export async function getCurrentClassSession() {
   let session = await prisma.classSession.findFirst({ orderBy: { updatedAt: "desc" } });
   if (!session) {
@@ -177,12 +179,13 @@ export async function ensureDrawForRun(gameRunId: string) {
 export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDOM" | "LOW" | "HIGH") {
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId }, include: { periods: true } });
   const nextDay = run.type === "DYNAMIC" ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
-  if (run.type === "DYNAMIC" && nextDay > run.dynamicPeriods) {
+  const dynamicDayCount = Math.max(run.dynamicPeriods, MINIMUM_GAME_DAYS);
+  if (run.type === "DYNAMIC" && nextDay > dynamicDayCount) {
     throw new Error("All dynamic pricing days have already been completed.");
   }
   await prisma.customerDraw.deleteMany({ where: { gameRunId, drawOrder: nextDay } });
   if (mode === "NO_ARRIVAL") {
-    await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, run.dynamicPeriods, run.status === "REVEALED");
+    await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, dynamicDayCount, run.status === "REVEALED");
     await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: nextDay, status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED" } });
     return { day: nextDay, arrival: false };
   }
@@ -224,7 +227,7 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
   });
   await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentDrawOrder: nextDay, status: run.status === "REVEALED" ? "REVEALED" : "SIMULATED" } });
   await runSimulation(gameRunId);
-  await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, run.dynamicPeriods, run.status === "REVEALED");
+  await advanceDynamicPeriodIfNeeded(run.id, run.type, nextDay, dynamicDayCount, run.status === "REVEALED");
   return { day: nextDay, arrival: true, segment, valuationAmount: participant.valuationAmount };
 }
 

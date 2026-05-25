@@ -54,7 +54,7 @@ model GameRun {
   capacity                 Int
   drawCount                Int?
   drawPercent              Float            @default(0.70)
-  dynamicPeriods           Int              @default(5)
+  dynamicPeriods           Int              @default(10)
   segmentCutoff            Int?
   revealPrices             Boolean          @default(false)
   revealEventDetails       Boolean          @default(false)

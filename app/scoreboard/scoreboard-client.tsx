@@ -22,8 +22,13 @@ type PriceRow = {
   team: { teamNumber: number };
 };
 
+type HistogramBucket = {
+  bucket: string;
+  count: number;
+};
+
 export function ScoreboardClient() {
-  const [data, setData] = useState<{ run: null | { name: string; status: string; type: string; revealPrices: boolean }; results: Row[]; prices: PriceRow[] }>({ run: null, results: [], prices: [] });
+  const [data, setData] = useState<{ run: null | { name: string; status: string; type: string; revealPrices: boolean; revealValuationHistogram: boolean }; results: Row[]; prices: PriceRow[]; valuationHistogram: HistogramBucket[] }>({ run: null, results: [], prices: [], valuationHistogram: [] });
   const [large, setLarge] = useState(false);
 
   useEffect(() => {
@@ -65,6 +70,27 @@ export function ScoreboardClient() {
           </BarChart>
         </ResponsiveContainer>
       </section>
+      {run.revealValuationHistogram ? (
+        <section className="panel p-4">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-2xl font-black">Valuation Histogram</h2>
+              <p className="text-sm font-semibold text-slate-600">Revealed by instructor. Shows checked-in student valuations in $1,000 buckets.</p>
+            </div>
+          </div>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.valuationHistogram}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="bucket" interval={0} angle={-25} textAnchor="end" height={70} />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#ef8354" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      ) : null}
       <section className="panel overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600">
