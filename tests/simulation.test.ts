@@ -39,6 +39,21 @@ describe("simulation logic", () => {
     expect(highPool.map((candidate) => candidate.id)).toEqual(["high-1"]);
   });
 
+  it("keeps postscreening draws available when cutoff ties make one side empty", () => {
+    const candidates = [
+      { id: "a", valuationAmount: 2000 },
+      { id: "b", valuationAmount: 2000 },
+      { id: "c", valuationAmount: 2000 },
+      { id: "d", valuationAmount: 2000 }
+    ];
+    const lowPool = drawPoolForMode(candidates, [], 2000, "LOW", true);
+    const highPool = drawPoolForMode(candidates, candidates.map((candidate) => candidate.id), 2000, "HIGH", true);
+    expect(lowPool.length).toBeGreaterThan(0);
+    expect(highPool.length).toBeGreaterThan(0);
+    expect(lowPool.every((candidate) => candidate.valuationAmount === 2000)).toBe(true);
+    expect(highPool.every((candidate) => candidate.valuationAmount === 2000)).toBe(true);
+  });
+
   it("simulates static pricing", () => {
     const draws: Draw[] = [100, 500, 1000, 2000].map((valuationAmount, index) => ({
       customerId: `C${index}`,

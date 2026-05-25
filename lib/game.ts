@@ -201,7 +201,9 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
   const pool = drawPoolForMode(participants, usedIds, cutoff, mode, run.type === "POSTSCREENING");
   if (!pool.length) throw new Error("No matching checked-in participants are available to draw.");
   const participant = pool[Math.floor(Math.random() * pool.length)];
-  const segment = run.type === "POSTSCREENING" ? segmentFor(run.type, participant.valuationAmount, cutoff) : "UNKNOWN";
+  const segment = run.type === "POSTSCREENING"
+    ? mode === "LOW" || mode === "HIGH" ? mode : segmentFor(run.type, participant.valuationAmount, cutoff)
+    : "UNKNOWN";
   await prisma.customerDraw.create({
     data: {
       gameRunId,
