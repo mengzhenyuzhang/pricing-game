@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSession, requireAdmin } from "@/lib/auth";
-import { MINIMUM_GAME_DAYS, addDayToRun, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
+import { MINIMUM_GAME_DAYS, addDayToRun, ensureMinimumDynamicPeriods, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { defaultCapacity, defaultDrawCount, generateAttendanceAwareTeamAssignments } from "@/lib/team-generation";
 import { classSessionSchema, loginSchema, manualValuationSchema, publishAssignmentSchema, runSchema, teamManualSchema } from "@/lib/validation";
@@ -209,6 +209,7 @@ export async function controlRun(formData: FormData) {
   const action = String(formData.get("action"));
   const periodId = formData.get("periodId") ? String(formData.get("periodId")) : null;
   let message = "Action complete.";
+  await ensureMinimumDynamicPeriods(runId);
   if (action === "open") {
     const run = await prisma.gameRun.update({ where: { id: runId }, data: { status: "OPEN", currentDrawOrder: 0 } });
     await prisma.classSession.update({ where: { id: run.classSessionId }, data: { status: "GAME_ACTIVE" } });

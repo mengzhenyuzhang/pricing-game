@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createCustomRun, createPresetRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
-import { getCurrentClassSession } from "@/lib/game";
+import { MINIMUM_GAME_DAYS, getCurrentClassSession } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { defaultCapacity, defaultDrawCount } from "@/lib/team-generation";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -51,7 +51,7 @@ export default async function RunsPage({ searchParams }: { searchParams: { class
       <section className="panel overflow-x-auto">
         <table className="w-full min-w-[760px]">
           <thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Run</th><th className="p-3">Type</th><th className="p-3">Status</th><th className="p-3">Capacity</th><th className="p-3">Draws</th><th className="p-3">Periods</th><th className="p-3"></th></tr></thead>
-          <tbody>{runs.map((run) => <tr key={run.id} className="border-t"><td className="p-3 font-bold">{run.name}</td><td className="p-3">{run.type}</td><td className="p-3"><StatusBadge status={run.status} /></td><td className="p-3">{run.capacity}</td><td className="p-3">{run.drawCount ?? "auto"}</td><td className="p-3">{run.dynamicPeriods}</td><td className="p-3"><Link className="btn-secondary" href={`/admin/run/${run.id}`}>Control</Link></td></tr>)}</tbody>
+          <tbody>{runs.map((run) => <tr key={run.id} className="border-t"><td className="p-3 font-bold">{run.name}</td><td className="p-3">{run.type}</td><td className="p-3"><StatusBadge status={run.status} /></td><td className="p-3">{run.capacity}</td><td className="p-3">{run.drawCount ?? "auto"}</td><td className="p-3">{run.type === "DYNAMIC" ? Math.max(run.dynamicPeriods, MINIMUM_GAME_DAYS) : run.dynamicPeriods}</td><td className="p-3"><Link className="btn-secondary" href={`/admin/run/${run.id}`}>Control</Link></td></tr>)}</tbody>
         </table>
       </section>
     </div>

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { controlRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
-import { MINIMUM_GAME_DAYS } from "@/lib/game";
+import { MINIMUM_GAME_DAYS, ensureMinimumDynamicPeriods } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PendingButton } from "@/components/PendingButton";
@@ -21,6 +21,7 @@ function ControlButton({ runId, action, periodId, label, disabled = false, pendi
 
 export default async function RunDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { message?: string } }) {
   await requireAdmin();
+  await ensureMinimumDynamicPeriods(params.id);
   const run = await prisma.gameRun.findUnique({
     where: { id: params.id },
     include: {

@@ -177,6 +177,7 @@ export async function ensureDrawForRun(gameRunId: string) {
 }
 
 export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDOM" | "LOW" | "HIGH") {
+  await ensureMinimumDynamicPeriods(gameRunId);
   const run = await prisma.gameRun.findUniqueOrThrow({ where: { id: gameRunId }, include: { periods: true } });
   const nextDay = run.type === "DYNAMIC" ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
   const dynamicDayCount = Math.max(run.dynamicPeriods, MINIMUM_GAME_DAYS);
@@ -232,6 +233,7 @@ export async function addDayToRun(gameRunId: string, mode: "NO_ARRIVAL" | "RANDO
 }
 
 export async function openDynamicPricingDay(gameRunId: string, day: number) {
+  await ensureMinimumDynamicPeriods(gameRunId);
   const period = await prisma.roundPeriod.upsert({
     where: { gameRunId_periodNumber: { gameRunId, periodNumber: day } },
     update: { status: "OPEN", label: `Day ${day}`, instructions: `Submit your team's price for day ${day}.`, deadline: null },
@@ -239,6 +241,27 @@ export async function openDynamicPricingDay(gameRunId: string, day: number) {
   });
   await prisma.roundPeriod.updateMany({ where: { gameRunId, id: { not: period.id }, status: "OPEN" }, data: { status: "LOCKED" } });
   await prisma.gameRun.update({ where: { id: gameRunId }, data: { currentPeriod: day } });
+}
+
+export async function ensureMinimumDynamicPeriods(gameRunId: string) {
+  const run = await prisma.gameRun.findUnique({ where: { id: gameRunId }, include: { periods: true } });
+  if (!run || run.type !== "DYNAMIC") return;
+  if (run.dynamicPeriods < MINIMUM_GAME_DAYS) {
+    await prisma.gameRun.update({ where: { id: gameRunId }, data: { dynamicPeriods: MINIMUM_GAME_DAYS } });
+  }
+  const existing = new Set(run.periods.map((period) => period.periodNumber));
+  for (let day = 1; day <= MINIMUM_GAME_DAYS; day += 1) {
+    if (!existing.has(day)) {
+      await prisma.roundPeriod.create({
+        data: {
+          gameRunId,
+          periodNumber: day,
+          label: `Day ${day}`,
+          instructions: `Submit your team's price for day ${day}.`
+        }
+      });
+    }
+  }
 }
 
 async function advanceDynamicPeriodIfNeeded(gameRunId: string, type: string, completedDay: number, dynamicPeriods: number, revealed: boolean) {
