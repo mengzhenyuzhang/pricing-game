@@ -446,6 +446,6 @@ export function defaultDrawCount(valuationCount: number, drawPercent: number, ex
 }
 
 export function defaultCapacity(type: string, valuationCount: number) {
-  if (type === "POSTSCREENING") return Math.max(1, Math.round(valuationCount * 0.35));
-  return Math.max(valuationCount, 1);
+  if (type === "POSTSCREENING") return 10;
+  return 100;
 }

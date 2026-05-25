@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSession, requireAdmin } from "@/lib/auth";
-import { MINIMUM_GAME_DAYS, addDayToRun, computeSegmentCutoffForClassSession, ensureMinimumDynamicPeriods, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
+import { addDayToRun, computeSegmentCutoffForClassSession, ensureMinimumDynamicPeriods, getCurrentClassSession, openDynamicPricingDay, runSimulation } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_SEGMENT_CUTOFF_PERCENT } from "@/lib/segments";
 import { defaultCapacity, defaultDrawCount, generateAttendanceAwareTeamAssignments } from "@/lib/team-generation";
@@ -159,7 +159,8 @@ export async function createPresetRun(formData: FormData) {
   const preset = String(formData.get("preset"));
   const type = preset === "dynamic" ? "DYNAMIC" : preset === "post" ? "POSTSCREENING" : "STATIC";
   const name = preset === "static2" ? "Static Round 2" : preset === "dynamic" ? "Dynamic Pricing Game" : preset === "post" ? "Postscreening Game" : "Static Round 1";
-  const dynamicPeriods = Math.max(Number(formData.get("dynamicPeriods") || MINIMUM_GAME_DAYS), MINIMUM_GAME_DAYS);
+  const dayLimit = defaultDrawCount(participantCount, classSession.targetDrawPercent);
+  const dynamicPeriods = Math.max(Number(formData.get("dynamicPeriods") || dayLimit), 1);
   const segmentCutoffPercent = type === "POSTSCREENING" ? Number(formData.get("segmentCutoffPercent") || DEFAULT_SEGMENT_CUTOFF_PERCENT) : null;
   const segmentCutoff = type === "POSTSCREENING" ? await computeSegmentCutoffForClassSession(classSessionId, segmentCutoffPercent ?? DEFAULT_SEGMENT_CUTOFF_PERCENT) : null;
   const run = await prisma.gameRun.create({
@@ -168,18 +169,13 @@ export async function createPresetRun(formData: FormData) {
       name,
       type,
       capacity: defaultCapacity(type, participantCount),
-      drawCount: defaultDrawCount(participantCount, classSession.targetDrawPercent),
+      drawCount: dayLimit,
       drawPercent: classSession.targetDrawPercent,
       dynamicPeriods,
       segmentCutoff,
       segmentCutoffPercent
     }
   });
-  if (type === "DYNAMIC" || type === "POSTSCREENING") {
-    for (let i = 1; i <= dynamicPeriods; i += 1) {
-      await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Day ${i}`, instructions: "Submit the price your team wants to use for this day." } });
-    }
-  }
   revalidatePath(`/admin/class-sessions/${classSessionId}/runs`);
   redirect(`/admin/run/${run.id}`);
 }
@@ -206,11 +202,6 @@ export async function createCustomRun(formData: FormData) {
       segmentCutoffPercent
     }
   });
-  if (parsed.type === "DYNAMIC" || parsed.type === "POSTSCREENING") {
-    for (let i = 1; i <= parsed.dynamicPeriods; i += 1) {
-      await prisma.roundPeriod.create({ data: { gameRunId: run.id, periodNumber: i, label: `Day ${i}`, instructions: "Submit the price your team wants to use for this day." } });
-    }
-  }
   redirect(`/admin/run/${run.id}`);
 }
 

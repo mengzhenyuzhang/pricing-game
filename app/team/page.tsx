@@ -26,6 +26,7 @@ export default async function TeamPage() {
     ? await prisma.teamResult.findFirst({ where: { gameRunId: resultsRun.id, teamId: participant.teamId } })
     : null;
   const dailyRows = resultsRun ? buildDailyRows(resultsRun.currentDrawOrder, teamResult?.eventsJson ?? "[]") : [];
+  const remainingCapacity = resultsRun ? Math.max(0, resultsRun.capacity - (teamResult?.capacityUsed ?? 0)) : null;
   const pageSignature = teamPageSignature(
     playable?.run.id ?? null,
     playable?.period?.id ?? null,
@@ -76,7 +77,10 @@ export default async function TeamPage() {
               <h2 className="text-2xl font-black">Your Team&apos;s Daily Results</h2>
               <p className="mt-1 text-slate-600">{resultsRun.name} through day {resultsRun.currentDrawOrder}</p>
             </div>
-            <p className="rounded-md bg-mint px-4 py-2 text-xl font-black">${dailyRows.at(-1)?.cumulativeRevenue.toLocaleString() ?? "0"}</p>
+            <div className="flex flex-wrap gap-2">
+              <p className="rounded-md bg-mint px-4 py-2 text-xl font-black">${dailyRows.at(-1)?.cumulativeRevenue.toLocaleString() ?? "0"}</p>
+              <p className="rounded-md bg-slate-100 px-4 py-2 text-xl font-black">{remainingCapacity} capacity left</p>
+            </div>
           </div>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[760px]">

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { controlRun } from "@/lib/admin-actions";
 import { requireAdmin } from "@/lib/auth";
-import { MINIMUM_GAME_DAYS, ensureMinimumDynamicPeriods } from "@/lib/game";
+import { ensureMinimumDynamicPeriods, getRunDayLimit } from "@/lib/game";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PendingButton } from "@/components/PendingButton";
@@ -42,21 +42,17 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
   const highValuationCount = postscreeningValuations.filter((participant) => participant.valuationAmount >= cutoff).length;
   const submittedTeamIds = new Set(run.decisions.map((decision) => decision.teamId));
   const missing = teams.filter((team) => !submittedTeamIds.has(team.id));
-  const canProceedDay = run.status === "SIMULATED" || run.status === "REVEALED";
   const usesDailyPricing = run.type === "DYNAMIC" || run.type === "POSTSCREENING";
+  const isReadyForFirstDay = run.status === "OPEN" || run.status === "SIMULATED" || run.status === "REVEALED";
   const nextDay = usesDailyPricing ? run.currentPeriod ?? run.currentDrawOrder + 1 : run.currentDrawOrder + 1;
-  const dynamicDayCount = Math.max(run.dynamicPeriods, MINIMUM_GAME_DAYS);
-  const dynamicDone = usesDailyPricing && nextDay > dynamicDayCount;
+  const dayLimit = await getRunDayLimit(run.id);
+  const dynamicDone = nextDay > dayLimit;
   const currentPeriodDecisionTeamIds = new Set(
     usesDailyPricing
       ? run.decisions.filter((decision) => decision.period?.periodNumber === nextDay).map((decision) => decision.teamId)
       : run.decisions.map((decision) => decision.teamId)
   );
   const missingCurrentDay = teams.filter((team) => !currentPeriodDecisionTeamIds.has(team.id));
-  const decisionsByPeriod = new Map<number, number>();
-  for (const decision of run.decisions) {
-    if (decision.period?.periodNumber) decisionsByPeriod.set(decision.period.periodNumber, (decisionsByPeriod.get(decision.period.periodNumber) ?? 0) + 1);
-  }
   const drawByDay = new Map(run.draws.map((draw) => [draw.drawOrder, draw]));
   return (
     <div className="space-y-5">
@@ -65,68 +61,38 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
         <a className="btn-secondary" href={`/api/admin/export/results?runId=${run.id}`}>Export results CSV</a>
       </div>
       <section className="panel p-5">
-        <h2 className="text-2xl font-black">Run Controls</h2>
+        <h2 className="text-2xl font-black">Game Controls</h2>
         {searchParams.message ? <p className="mt-3 rounded-md bg-mint p-3 font-semibold text-slate-900">{searchParams.message}</p> : null}
         <p className="mt-2 text-slate-700">{statusHelp(run.status, run.currentDrawOrder, run.draws.length)}</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <ControlButton runId={run.id} action="open" label={usesDailyPricing ? "Open day 1 pricing" : "Open submissions"} pendingText="Opening..." disabled={run.status === "OPEN"} />
-          <ControlButton runId={run.id} action="lock" label="Lock submissions" pendingText="Locking..." disabled={run.status !== "OPEN"} />
-          <ControlButton runId={run.id} action="simulate" label="Start day-by-day simulation" pendingText="Starting..." disabled={run.status === "OPEN" || run.decisions.length === 0} />
+          <ControlButton runId={run.id} action="open" label={usesDailyPricing ? "Open day 1 pricing" : "Open submissions"} pendingText="Opening..." disabled={run.status !== "DRAFT" && run.status !== "LOCKED"} />
           <ControlButton runId={run.id} action="reveal" label="Reveal scoreboard" pendingText="Revealing..." disabled={run.status !== "SIMULATED" && run.status !== "REVEALED"} />
           <ControlButton runId={run.id} action="revealPrices" label="Reveal team prices" pendingText="Revealing prices..." disabled={run.revealPrices} />
           <ControlButton runId={run.id} action="revealHistogram" label="Reveal valuation histogram" pendingText="Revealing histogram..." />
           <ControlButton runId={run.id} action="reset" label="Reset run" pendingText="Resetting..." />
         </div>
-        <p className="mt-3 text-sm text-slate-600">{usesDailyPricing ? "Pricing opens one day at a time. Teams submit one fresh price for the current day before you proceed." : "After submissions are locked, start the day-by-day simulation. The scoreboard begins at day 0 and updates as you proceed."}</p>
+        <p className="mt-3 text-sm text-slate-600">{usesDailyPricing ? "Open day 1 pricing once. After each day, the next pricing day opens automatically." : "Open submissions once. After teams submit, proceed through arrivals using the next-day controls."}</p>
       </section>
       <section className="panel p-5">
         <h2 className="text-2xl font-black">Proceed to Next Day</h2>
         <p className="mt-2 text-slate-700">Day {nextDay}: choose whether an arrival occurs. If there is an arrival, the app randomly draws one checked-in valuation and recomputes the scoreboard.</p>
         {run.type === "POSTSCREENING" ? <p className="mt-2 rounded-md bg-slate-100 p-3 text-sm font-semibold">Postscreening cutoff: {formatMoney(cutoff)} ({formatPercent(run.segmentCutoffPercent ?? 0.5)} quantile). Below cutoff draws from {lowValuationCount} valuations under this amount; above cutoff draws from {highValuationCount} valuations at or above it.</p> : null}
-        {usesDailyPricing ? <p className="mt-1 text-sm text-slate-600">This run can proceed through at least day {dynamicDayCount}.</p> : <p className="mt-1 text-sm text-slate-600">Static runs can continue for 10 or more days.</p>}
+        <p className="mt-1 text-sm text-slate-600">Day limit: {dayLimit}, based on draw percent times checked-in valuations{run.drawCount ? " (or explicit draw count)." : "."}</p>
         {usesDailyPricing ? <p className="mt-2 rounded-md bg-mint p-3 text-sm font-semibold">Current pricing day: {nextDay}. Missing day-{nextDay} prices: {missingCurrentDay.length ? missingCurrentDay.map((team) => team.name).join(", ") : "none"}.</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          <ControlButton runId={run.id} action="nextDayNoArrival" label={`Proceed to day ${nextDay}: no arrival`} pendingText="Proceeding..." disabled={(!canProceedDay && !usesDailyPricing) || dynamicDone || (usesDailyPricing && missingCurrentDay.length > 0)} />
+          <ControlButton runId={run.id} action="nextDayNoArrival" label={`Proceed to day ${nextDay}: no arrival`} pendingText="Proceeding..." disabled={!isReadyForFirstDay || dynamicDone || (usesDailyPricing && missingCurrentDay.length > 0) || (!usesDailyPricing && missing.length > 0)} />
           {run.type !== "POSTSCREENING" ? (
-            <ControlButton runId={run.id} action="nextDayRandomArrival" label={`Proceed to day ${nextDay}: random arrival`} pendingText="Drawing arrival..." disabled={(!canProceedDay && !usesDailyPricing) || dynamicDone || (usesDailyPricing && missingCurrentDay.length > 0)} />
+            <ControlButton runId={run.id} action="nextDayRandomArrival" label={`Proceed to day ${nextDay}: random arrival`} pendingText="Drawing arrival..." disabled={!isReadyForFirstDay || dynamicDone || (usesDailyPricing && missingCurrentDay.length > 0) || (!usesDailyPricing && missing.length > 0)} />
           ) : null}
           {run.type === "POSTSCREENING" ? (
             <>
-              <ControlButton runId={run.id} action="nextDayLowArrival" label={`Proceed to day ${nextDay}: below cutoff`} pendingText="Drawing below cutoff..." disabled={dynamicDone || missingCurrentDay.length > 0} />
-              <ControlButton runId={run.id} action="nextDayHighArrival" label={`Proceed to day ${nextDay}: above cutoff`} pendingText="Drawing above cutoff..." disabled={dynamicDone || missingCurrentDay.length > 0} />
+              <ControlButton runId={run.id} action="nextDayLowArrival" label={`Proceed to day ${nextDay}: below cutoff`} pendingText="Drawing below cutoff..." disabled={!isReadyForFirstDay || dynamicDone || missingCurrentDay.length > 0} />
+              <ControlButton runId={run.id} action="nextDayHighArrival" label={`Proceed to day ${nextDay}: above cutoff`} pendingText="Drawing above cutoff..." disabled={!isReadyForFirstDay || dynamicDone || missingCurrentDay.length > 0} />
             </>
           ) : null}
         </div>
         <p className="mt-3 text-sm text-slate-600">{usesDailyPricing ? "After you proceed, the next day opens automatically so students can adjust prices again. For postscreening, choose below cutoff or above cutoff to control the arriving customer distribution." : "For static runs, teams use the same submitted price across days."}</p>
       </section>
-      {run.periods.length ? (
-        <section className="panel p-5">
-          <h2 className="text-2xl font-black">{run.type === "POSTSCREENING" ? "Postscreening Pricing Days" : "Dynamic Pricing Days"}</h2>
-          <p className="mt-2 text-sm text-slate-600">Past days are locked by the simulation flow. Only the current or future pricing day can be opened manually.</p>
-          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-            {run.periods.map((period) => (
-              <div className={`rounded-md border p-3 ${period.periodNumber <= run.currentDrawOrder ? "border-slate-100 bg-slate-50" : "border-slate-200"}`} key={period.id}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-bold">Day {period.periodNumber}</div>
-                  <StatusBadge status={period.status} />
-                </div>
-                <p className="mt-2 text-sm text-slate-600">{decisionsByPeriod.get(period.periodNumber) ?? 0} / {teams.length} prices submitted</p>
-                {period.periodNumber <= run.currentDrawOrder ? (
-                  <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-500">Completed</p>
-                ) : (
-                  <>
-                    {period.periodNumber === nextDay ? <p className="mt-2 text-xs font-bold uppercase tracking-wide text-coral">Current pricing day</p> : null}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <ControlButton runId={run.id} periodId={period.id} action="open" label="Open" />
-                      <ControlButton runId={run.id} periodId={period.id} action="lock" label="Lock" />
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
       {run.currentDrawOrder > 0 ? (
         <section className="panel overflow-x-auto">
           <div className="p-5">
@@ -160,7 +126,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
         </section>
       ) : null}
       <section className="grid gap-4 md:grid-cols-4">
-        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Current day</p><p className="text-3xl font-black">{run.currentDrawOrder}</p><p className="text-sm text-slate-500">{run.draws.length} arrival day(s){run.type === "DYNAMIC" ? ` / ${dynamicDayCount} pricing days` : ""}</p></div>
+        <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Current day</p><p className="text-3xl font-black">{run.currentDrawOrder}</p><p className="text-sm text-slate-500">{run.draws.length} arrival day(s) / {dayLimit} day limit</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Submitted teams</p><p className="text-3xl font-black">{submittedTeamIds.size}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Missing teams</p><p className="text-3xl font-black">{missing.length}</p></div>
         <div className="panel p-4"><p className="text-sm font-bold text-slate-500">Results</p><p className="text-3xl font-black">{run.results.length}</p></div>
@@ -174,7 +140,7 @@ export default async function RunDetailPage({ params, searchParams }: { params: 
       </section>
       {run.results.length ? (
         <section className="panel overflow-x-auto">
-          <table className="w-full min-w-[760px]"><thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Rank</th><th className="p-3">Team</th><th className="p-3">Sales</th><th className="p-3">Revenue</th><th className="p-3">Capacity</th></tr></thead><tbody>{run.results.map((r) => <tr className="border-t" key={r.id}><td className="p-3 font-black">{r.rank}</td><td className="p-3 font-bold">{r.team.name}</td><td className="p-3">{r.sales}</td><td className="p-3">${r.revenue.toLocaleString()}</td><td className="p-3">{r.capacityUsed}</td></tr>)}</tbody></table>
+          <table className="w-full min-w-[860px]"><thead className="bg-slate-100 text-left text-sm uppercase text-slate-600"><tr><th className="p-3">Rank</th><th className="p-3">Team</th><th className="p-3">Sales</th><th className="p-3">Revenue</th><th className="p-3">Used</th><th className="p-3">Remaining</th></tr></thead><tbody>{run.results.map((r) => <tr className="border-t" key={r.id}><td className="p-3 font-black">{r.rank}</td><td className="p-3 font-bold">{r.team.name}</td><td className="p-3">{r.sales}</td><td className="p-3">${r.revenue.toLocaleString()}</td><td className="p-3">{r.capacityUsed}</td><td className="p-3 font-bold">{Math.max(0, run.capacity - r.capacityUsed)}</td></tr>)}</tbody></table>
         </section>
       ) : null}
     </div>
